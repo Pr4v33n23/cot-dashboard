@@ -1,4 +1,4 @@
-"""CME + ICE physical futures universe for WILLIAMS_COT_SWING_v1.
+"""CME + ICE futures universe for WILLIAMS_COT_SWING_v1.
 
 Each contract carries:
 - `symbol`         : Internal short symbol (CME root where possible).
@@ -12,21 +12,18 @@ Each contract carries:
                      in the backtest. Sourced from CME / ICE contract specs.
 - `tick_size`      : Minimum price increment.
 
-## Phase 0 universe scope — physicals only
+## Universe scope — ~52 contracts covering DisAgg and TFF reports
 
-The CFTC disaggregated futures-only report uses commercial/non-commercial
-categories that map cleanly onto physical hedgers (producers, end-users) but
-NOT onto financial futures (equity indices, rates, FX). Financials live in the
-separate "Traders in Financial Futures" (TFF) report with different categories
-(Dealer Intermediary, Asset Manager, Leveraged Funds).
+The CFTC disaggregated futures-only report (DisAgg) uses commercial/non-commercial
+categories that map cleanly onto physical hedgers (producers, end-users).
+Financial futures (equity indices, rates, FX) live in the separate "Traders in
+Financial Futures" (TFF) report with different categories (Dealer Intermediary,
+Asset Manager, Leveraged Funds).
 
 Williams/Briese/Upperman's commercial-hedger-extreme framework was designed for
 physical commodities where commercial = real producer or end-user with physical
-exposure. Applying it to TFF "dealers" would be conceptually unsound.
-
-Decision: Phase 0 restricts to 23 physical contracts (grains, energy, metals,
-softs, meats). TFF support + a separate dealer-positioning strategy variant
-can be added in a later phase if Phase 0 passes.
+exposure. TFF contracts use the dealer-positioning variant with separate signal
+logic. Both report types are now included in the universe.
 
 ## Data source notes
 
@@ -38,7 +35,7 @@ can be added in a later phase if Phase 0 passes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 
@@ -91,11 +88,16 @@ UNIVERSE: tuple[Contract, ...] = (
 
     # ── Additional physicals (DisAgg) ─────────────────────────────────────
     Contract("KE",    "KC HRW Wheat",       "grains",  "006642", "KE=F",    50.0,    0.25),
-    Contract("BZ",    "Brent Crude",        "energy",  "096742", "BZ=F",    1000.0,  0.01),
+    Contract("BZ",    "Brent Crude",        "energy",  "06765T", "BZ=F",    1000.0,  0.01),
+    # NOTE: verify cftc_code "06765T" against CFTC disagg archive before production
     Contract("ALI",   "Aluminum",           "metals",  "191242", "ALI=F",   44000.0, 0.0001),
-    Contract("LBS",   "Lumber",             "softs",   "058644", "LBS=F",   110000.0, 0.10),
+    Contract("LBS",   "Lumber",             "softs",   "058644", "LBS=F",   110000.0, 0.10),  # NOTE: delisted Nov 2023; LBR is replacement
 
     # ── FX (TFF) ──────────────────────────────────────────────────────────
+    # FX price data: using spot =X tickers (e.g. EURUSD=X) as proxy for COT analysis.
+    # CME continuous futures equivalents are 6E=F, 6B=F, etc. Spot and futures
+    # track closely for positioning context. Change to =F tickers if futures-exact
+    # price alignment is needed.
     Contract("EURUSD","Euro FX",            "fx",      "099741", "EURUSD=X", 125000.0,   0.00005,    "financial", "tff"),
     Contract("GBPUSD","British Pound",      "fx",      "096742", "GBPUSD=X", 62500.0,    0.0001,     "financial", "tff"),
     Contract("JPYUSD","Japanese Yen",       "fx",      "097741", "JPYUSD=X", 12500000.0, 0.0000001,  "financial", "tff"),
@@ -105,7 +107,6 @@ UNIVERSE: tuple[Contract, ...] = (
     Contract("NZDUSD","New Zealand Dollar", "fx",      "112741", "NZDUSD=X", 100000.0,   0.0001,     "financial", "tff"),
     Contract("MXNUSD","Mexican Peso",       "fx",      "095741", "MXNUSD=X", 500000.0,   0.000005,   "financial", "tff"),
     Contract("BRLUSD","Brazilian Real",     "fx",      "102741", "BRLUSD=X", 100000.0,   0.00005,    "financial", "tff"),
-    Contract("RUBUSD","Russian Ruble",      "fx",      "089741", "RUBUSD=X", 2500000.0,  0.00001,    "financial", "tff"),
     Contract("NOKUSD","Norwegian Krone",    "fx",      "184741", "NOKUSD=X", 2000000.0,  0.00001,    "financial", "tff"),
     Contract("SEKUSD","Swedish Krona",      "fx",      "185741", "SEKUSD=X", 2000000.0,  0.00001,    "financial", "tff"),
 
@@ -124,7 +125,7 @@ UNIVERSE: tuple[Contract, ...] = (
     Contract("ZF",    "5Y T-Note",          "rates",   "044601", "ZF=F",    1000.0,   0.0078125, "financial", "tff"),
     Contract("ZT",    "2Y T-Note",          "rates",   "042601", "ZT=F",    200000.0, 0.0078125, "financial", "tff"),
     Contract("FF",    "30D Fed Funds",      "rates",   "045601", "FF=F",    4167.0,   0.0025,    "financial", "tff"),
-    Contract("SR3",   "SOFR 3M",            "rates",   "SR3   ", "SR3=F",   2500.0,   0.0025,    "financial", "tff"),
+    Contract("SR3",   "SOFR 3M",            "rates",   "SR3",    "SR3=F",   2500.0,   0.0025,    "financial", "tff"),
 )
 
 

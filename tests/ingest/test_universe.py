@@ -28,3 +28,7 @@ def test_financial_sectors_present():
 def test_symbols_unique():
     syms = [c.symbol for c in UNIVERSE]
     assert len(syms) == len(set(syms))
+
+def test_cftc_codes_unique():
+    codes = [c.cftc_code.strip() for c in UNIVERSE if c.cftc_code.strip()]
+    assert len(codes) == len(set(codes)), f"Duplicate cftc_codes: {[c for c in codes if codes.count(c) > 1]}"
