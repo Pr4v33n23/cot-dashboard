@@ -201,18 +201,29 @@ Add keyword mappings for all new contracts:
 - FX: dollar, euro, sterling, yen, yuan, RBA, BOE, ECB, BOJ, DXY
 - VIX: volatility, VIX, fear, uncertainty, options, hedging
 
-### 5.4 `packages/ingest/news_sentiment.py` — NEW (FinBERT)
+### 5.4 `packages/ingest/news_sentiment.py` — NEW (DeepSeek V4 API)
+
+Uses **DeepSeek-V4-Flash** via `api.deepseek.com` (OpenAI-compatible). Flash chosen for batch news scoring — fast, cheap (~$0.07/M input tokens), sufficient quality for structured classification tasks.
 
 ```python
-MODEL_ID = "ProsusAI/finbert"   # ~400MB, CPU-only, cached after first download
-BATCH_SIZE = 32
+MODEL = "deepseek-v4-flash"
+API_BASE = "https://api.deepseek.com/v1"   # OpenAI-compatible
+BATCH_SIZE = 32                             # headlines per API call (packed into one prompt)
 ```
 
-Loads FinBERT on startup. Incremental scoring (skip already-scored headlines). Output:
-- `sentiment_score`: `positive_prob − negative_prob` ∈ [−1, +1]
-- `sentiment_label`: `"positive" | "negative" | "neutral"`
+Each batch call sends up to 32 headlines packed into a single prompt requesting structured JSON output:
+```json
+[{"title": "...", "sentiment": "positive|negative|neutral", "score": 0.82, "reasoning": "..."}]
+```
 
-Written back to `news.parquet`. Runs at daily cron.
+Output per headline:
+- `sentiment_score`: float ∈ [−1, +1] (provided directly by model, not derived)
+- `sentiment_label`: `"positive" | "negative" | "neutral"`
+- `sentiment_reason`: 1-sentence deterministic explanation (e.g., "OPEC cut = supply reduction = bullish crude")
+
+Incremental — skip headlines where `sentiment_score` is already populated. Written back to `news.parquet`. Runs at daily cron. API key stored as `DEEPSEEK_API_KEY` env var (Fly secret + GitHub Actions secret).
+
+**Cost estimate:** ~300 headlines/day × ~80 tokens = 24K tokens/day → ~$0.002/day (~$0.70/year at Flash pricing).
 
 ### 5.5 `packages/ingest/regime.py` — NEW (HMM per market)
 
@@ -237,7 +248,47 @@ Minimum data threshold: skip HMM fit if `len(weekly_bars) < 200` — set `regime
 
 Retrain weekly after CFTC refresh. Models persisted to `research/data/cache/regime_{symbol}.pkl`.
 
-### 5.6 `packages/ingest/retail_sentiment.py` — NEW
+### 5.6 `packages/ingest/market_synthesis.py` — NEW (DeepSeek V4 Pro)
+
+Uses **DeepSeek-V4-Pro** via `api.deepseek.com`. Pro chosen here because this is the key value-add output — a structured per-market intelligence summary that synthesises all data layers into coherent context a trader can act on.
+
+**Input per market (structured, not free-form):**
+```python
+{
+  "symbol": "CL",
+  "market_type": "physical",
+  "cot": {
+    "comm_net": 182400, "comm_cot_index": 91.4,
+    "spec_net": -94200, "spec_cot_index": 8.2,
+    "divergence_weeks": 5
+  },
+  "regime": {"label": "accumulation", "weeks": 5, "confidence": 0.81},
+  "open_interest": {"current": 412000, "change_pct": 6.1},
+  "retail_sentiment": {"avg_short_pct": 71},
+  "news_sentiment": {"score": 0.55, "top_headlines": ["OPEC cuts...", "Inventory draw..."]}
+}
+```
+
+**Output (structured JSON, stored per market per week):**
+```json
+{
+  "summary": "Commercials are at a 3-year extreme long while specs are near extreme short. Rising OI confirms new money entering. Retail is 71% short — positioned against commercials. Regime: accumulation for 5 weeks.",
+  "confluence_score": 0.84,
+  "key_factors": ["extreme commercial long", "spec capitulation", "OI expansion", "retail contra"],
+  "watch": "OPEC+ meeting May 22 — potential catalyst for the positioning thesis to play out.",
+  "framework": "physical"
+}
+```
+
+Stored in `research/data/cache/synthesis_{symbol}.parquet`. Rebuilt weekly after CFTC refresh (not daily — synthesis is a weekly snapshot aligned to COT release cadence).
+
+New API endpoint: `GET /synthesis/{symbol}` returns the latest synthesis object.
+
+New `BarRow` field: `confluence_score: float | None = None` — surfaces in the intelligence strip and `/today` ranking.
+
+**Cost estimate:** ~80 markets × ~800 tokens input × ~300 tokens output = ~88K tokens/week → ~$0.05/week (~$2.60/year at Pro pricing).
+
+### 5.7 `packages/ingest/retail_sentiment.py` — NEW
 
 Three primary + two supplementary sources:
 
@@ -303,7 +354,27 @@ Add sector groups for `"fx"`, `"indices"`, `"rates"`, `"volatility"` below the e
 src/lib/components/intelligence/IntelStrip.svelte
 ```
 
-4-cell strip. Props: `{ divergenceWeeks, retailShortPct, oiChangePct, newsTone, marketType }`. Cell labels adapt: physicals show "COT Divergence", financials show "AM/LF Divergence".
+5-cell strip (adds Confluence). Props: `{ divergenceWeeks, retailShortPct, oiChangePct, newsTone, confluenceScore, marketType }`. Cell labels adapt: physicals show "COT Divergence", financials show "AM/LF Divergence".
+
+5th cell — **Confluence** (DeepSeek-V4-Pro score):
+- Value: `0.84` (0–1 float, coloured green → amber → red)
+- Sub-line: `"4 factors aligned"` (count of key_factors from synthesis)
+- Clicking opens a drawer showing the full `synthesis.summary` + `watch` field
+
+### 7.2a New component: `SynthesisDrawer.svelte`
+
+```
+src/lib/components/intelligence/SynthesisDrawer.svelte
+```
+
+Slide-in drawer (same pattern as `NewsReader.svelte`). Shows:
+- `synthesis.summary` — 2–3 sentence structured market context
+- `synthesis.key_factors` — bulleted list of active signals
+- `synthesis.watch` — upcoming catalyst to monitor
+- Timestamp: "Generated {date} after CFTC release"
+- Disclaimer: *"Generated by DeepSeek-V4-Pro from structured data. Not a trading signal."*
+
+Triggered by clicking the Confluence cell in IntelStrip.
 
 ### 7.3 Chart.svelte — OI as 4th pane
 
@@ -340,21 +411,35 @@ For financials, replace zone badges with a single HMM regime badge (e.g., `● t
 
 ```toml
 # pyproject.toml additions
-transformers = ">=4.40"
-torch = ">=2.2"           # CPU build — torch CPU wheel via --index-url in Dockerfile
+openai = ">=1.30"         # DeepSeek API is OpenAI-compatible — use openai client
 hmmlearn = ">=0.3"
 scikit-learn = ">=1.4"    # hmmlearn dependency — add explicitly
 lxml = ">=5.0"
 ```
 
-**Dockerfile:**
+FinBERT/torch/transformers are **removed** — replaced by DeepSeek API. No local model, no GPU requirement, no 700MB Docker layer.
+
+**Dockerfile — new secret mount:**
 ```dockerfile
-# Torch CPU wheel (avoids 2GB GPU build)
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-# Bake FinBERT into image (avoids cold-start download)
-RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; \
-    AutoTokenizer.from_pretrained('ProsusAI/finbert'); \
-    AutoModelForSequenceClassification.from_pretrained('ProsusAI/finbert')"
+# No model bake-in needed. API key injected at runtime via Fly secret.
+# DEEPSEEK_API_KEY set via: fly secrets set DEEPSEEK_API_KEY=sk-...
+```
+
+**GitHub Actions secrets:** Add `DEEPSEEK_API_KEY` to repo secrets for cron jobs.
+
+**DeepSeek client initialisation (shared across modules):**
+```python
+# packages/ingest/_deepseek.py
+from openai import OpenAI
+
+def get_client() -> OpenAI:
+    return OpenAI(
+        api_key=os.environ["DEEPSEEK_API_KEY"],
+        base_url="https://api.deepseek.com/v1",
+    )
+
+FLASH = "deepseek-v4-flash"   # news sentiment — fast, cheap
+PRO   = "deepseek-v4-pro"     # market synthesis — full power
 ```
 
 ---
@@ -364,8 +449,9 @@ RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClass
 1. **VIX futures CFTC code** — verify VX (CBOE) appears in a CFTC-reportable report accessible from the standard archive URL. If not, exclude from universe.
 2. **OANDA FX auth** — verify public position endpoint doesn't require API key for all 15 FX symbols.
 3. **HMM cold start on thin data** — contracts with < 200 weekly bars skip HMM fit, return `regime_label=null`. UI shows "Insufficient history" in regime cell.
-4. **Fly image size** — FinBERT (~400MB) + torch CPU (~300MB) adds ~700MB to the Docker image. Verify Fly.io volume strategy before baking model in vs downloading to a persistent volume.
-5. **`/today` ranking for financials** — physicals rank by `n_zones + total_mag`. Financials have no zone scores — rank by `regime_confidence` (max of `regime_proba` vector) × `abs(am_lf_divergence)`. Confirm this is the right signal before implementing.
+4. **DeepSeek model IDs** — collection page shows `deepseek-v4-flash` and `deepseek-v4-pro` as display names. Verify exact API model ID strings from `api.deepseek.com/v1/models` at implementation time.
+5. **`/today` ranking for financials** — physicals rank by `n_zones + total_mag`. Financials: rank by `confluence_score` (DeepSeek-V4-Pro output) when available, fall back to `regime_confidence × abs(am_lf_divergence)` while synthesis is warming up.
+6. **DeepSeek API rate limits** — Flash batch scoring 300 headlines daily is well within limits. Pro synthesis of 80 markets weekly should also be fine. Verify TPM limits on the free/paid tier before launch.
 
 ---
 
