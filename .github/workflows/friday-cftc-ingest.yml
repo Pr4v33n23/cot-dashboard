@@ -1,0 +1,76 @@
+name: Friday CFTC ingest
+
+# Fires every Friday at 22:00 UTC (16:00 CT — ~30 min after CFTC public release).
+# Pulls the latest disaggregated futures-only ZIP, rebuilds the annotated
+# bundle, and triggers a /refresh on the deployed API.
+
+on:
+  schedule:
+    - cron: '0 22 * * 5'
+  workflow_dispatch: # allow manual run from the Actions tab
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Pull fresh CFTC + price data
+        run: |
+          python - <<'PY'
+          import sys, time
+          sys.path.insert(0, 'packages')
+          from pathlib import Path
+          from ingest.universe import UNIVERSE
+          from ingest import cftc_cot, prices, news
+
+          cache = Path('research/data/cache')
+          # CFTC: refresh just the current year's archive — Friday cron only
+          # needs the latest week. Pre-2025 stays cached.
+          import datetime
+          this_year = datetime.date.today().year
+          zp = cftc_cot.download_year(this_year, cache)
+          print(f'cftc {this_year} -> {zp} ({zp.stat().st_size} bytes)')
+
+          # Prices: force a refresh of all symbols (each ~30 KB)
+          px = prices.load_universe(UNIVERSE, cache, force=True)
+          print(f'prices: {len(px):,} rows')
+
+          # News: refresh yfinance ticker news
+          n = news.load_all_news(UNIVERSE, cache_dir=cache)
+          print(f'news: {len(n):,} rows')
+          PY
+
+      # OPTIONAL: trigger /refresh on the live API so the in-memory bundle
+      # reloads with the new Parquet files. Set REFRESH_URL in repo secrets
+      # to your deployed API base (e.g. https://api.cot-lens.app).
+      - name: Refresh live API
+        if: env.REFRESH_URL != ''
+        env:
+          REFRESH_URL: ${{ secrets.REFRESH_URL }}
+        run: |
+          curl -fsS -X POST "$REFRESH_URL/refresh" || echo "refresh failed (non-fatal)"
+
+      # OPTIONAL: upload fresh cache to R2/S3. Requires R2_BUCKET +
+      # AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_ENDPOINT_URL secrets.
+      - name: Sync cache to R2
+        if: env.AWS_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          pip install awscli
+          aws s3 sync research/data/cache/ s3://$R2_BUCKET/cache/ --delete

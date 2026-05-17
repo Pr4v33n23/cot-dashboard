@@ -1,0 +1,48 @@
+# Fly.io app config for the COT_LENS_v1 API.
+# Single machine for MVP — autoscale comes in Phase 5 (PLAN §9).
+#
+# Deploy:
+#   fly launch --no-deploy --copy-config infra/fly/fly.toml
+#   fly deploy --dockerfile apps/api/Dockerfile
+#
+# Required secrets (set via `fly secrets set KEY=value`):
+#   - none for MVP (no auth, no DB yet)
+#
+# Optional:
+#   - R2 keys if you want the machine to pull cache directly instead of bundling
+
+app = "cot-lens-api"
+primary_region = "iad"           # change to your closest region
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  PORT = "8000"
+  PYTHONUNBUFFERED = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"     # stop on idle to save free-tier hours
+  auto_start_machines = true
+  min_machines_running = 0        # cold-start tolerable for MVP
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "get"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"               # bundle + pandas fits comfortably
+  cpu_kind = "shared"
+  cpus = 1
