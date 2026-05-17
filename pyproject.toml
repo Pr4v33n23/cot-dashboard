@@ -19,13 +19,23 @@ dependencies = [
     "pydantic>=2.7",
     "trafilatura>=2.0",
     "brotli>=1.1",
+    "huggingface_hub>=0.23",
+    "hmmlearn>=0.3",
+    "scikit-learn>=1.4",
+    "lxml>=5.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.5",
     "pytest>=8.0",
+    "pytest-mock>=3.14",
+    "responses>=0.25",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["packages"]
 
 [tool.setuptools.packages.find]
 where = ["packages"]
