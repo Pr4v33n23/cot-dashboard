@@ -2,7 +2,7 @@
 
 Same interface as cftc_cot.py but reads the TFF disaggregated ZIP archive.
 TFF archive URL pattern:
-  https://www.cftc.gov/files/dea/history/com_disagg_txt_{year}.zip
+  https://www.cftc.gov/files/dea/history/fut_fin_txt_{year}.zip
 """
 from __future__ import annotations
 import io
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-_TFF_URL = "https://www.cftc.gov/files/dea/history/com_disagg_txt_{year}.zip"
+_TFF_URL = "https://www.cftc.gov/files/dea/history/fut_fin_txt_{year}.zip"
 _TFF_COLS = {
     "As_of_Date_In_Form_YYMMDD":       "report_date",
     "CFTC_Contract_Market_Code":        "cftc_code",
