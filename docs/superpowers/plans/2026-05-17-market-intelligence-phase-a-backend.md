@@ -4,9 +4,9 @@
 
 **Goal:** Expand the data pipeline from 23 physicals to ~80 CME/NYMEX/CBOT/COMEX contracts with six intelligence layers: TFF financial COT, DeepSeek-V4 news sentiment + market synthesis, HMM regime detection, retail sentiment (IG/Myfxbook/OANDA/Put-Call/NR proxy), COT divergence signals, and open interest.
 
-**Architecture:** Extend existing `packages/ingest/` pipeline. Each new module follows the established pattern: download/parse → compute → write Parquet → API reads from in-memory Bundle. `Contract` dataclass gains `market_type` and `report_type` fields so the pipeline can route physicals through DisAgg and financials through TFF. Two AI modules call DeepSeek API (Flash for sentiment, Pro for synthesis). HMM runs locally via hmmlearn. Three scrapers handle retail sentiment.
+**Architecture:** Extend existing `packages/ingest/` pipeline. Each new module follows the established pattern: download/parse → compute → write Parquet → API reads from in-memory Bundle. `Contract` dataclass gains `market_type` and `report_type` fields so the pipeline can route physicals through DisAgg and financials through TFF. All AI inference (news sentiment + market synthesis) calls **DeepSeek-V4-Pro via HuggingFace Inference API** using `huggingface_hub.InferenceClient`. HMM runs locally via hmmlearn. Three scrapers handle retail sentiment.
 
-**Tech Stack:** Python 3.11, FastAPI, pandas, hmmlearn, scikit-learn, openai client (DeepSeek-compatible), lxml, yfinance, pytest
+**Tech Stack:** Python 3.11, FastAPI, pandas, hmmlearn, scikit-learn, huggingface_hub, lxml, yfinance, pytest
 
 ---
 
@@ -68,7 +68,7 @@ pythonpath = ["packages"]
 
 Add to `[project] dependencies`:
 ```toml
-    "openai>=1.30",
+    "huggingface_hub>=0.23",
     "hmmlearn>=0.3",
     "scikit-learn>=1.4",
     "lxml>=5.0",
@@ -638,55 +638,64 @@ git commit -m "feat: add divergence signals + gate A1-A5 on market_type"
 
 ---
 
-## Task 5: DeepSeek shared client
+## Task 5: AI shared client — DeepSeek-V4-Pro via HuggingFace
 
 **Files:**
-- Create: `packages/ingest/_deepseek.py`
+- Create: `packages/ingest/_ai.py`
 
-- [ ] **Step 1: Create shared client module**
+- [ ] **Step 1: Create shared HuggingFace client module**
 
 ```python
-# packages/ingest/_deepseek.py
-"""Shared DeepSeek API client. Uses openai SDK (DeepSeek is OpenAI-compatible)."""
+# packages/ingest/_ai.py
+"""Shared AI client — DeepSeek-V4-Pro via HuggingFace Inference API.
+
+All AI analysis (news sentiment + market synthesis) uses DeepSeek-V4-Pro
+through HuggingFace. Set HF_TOKEN env var (HuggingFace access token).
+"""
 from __future__ import annotations
 import os
-from openai import OpenAI
+from huggingface_hub import InferenceClient
 
-FLASH = "deepseek-v4-flash"
-PRO   = "deepseek-v4-pro"
-_BASE = "https://api.deepseek.com/v1"
+MODEL = "deepseek-ai/DeepSeek-V4-Pro"
 
 
-def get_client() -> OpenAI:
-    key = os.environ.get("DEEPSEEK_API_KEY", "")
-    if not key:
-        raise EnvironmentError("DEEPSEEK_API_KEY not set")
-    return OpenAI(api_key=key, base_url=_BASE)
+def get_client() -> InferenceClient:
+    token = os.environ.get("HF_TOKEN", "")
+    if not token:
+        raise EnvironmentError("HF_TOKEN not set — get one from huggingface.co/settings/tokens")
+    return InferenceClient(model=MODEL, token=token)
 
 
 def available() -> bool:
-    """True if DEEPSEEK_API_KEY is present in environment."""
-    return bool(os.environ.get("DEEPSEEK_API_KEY"))
+    """True if HF_TOKEN is present in environment."""
+    return bool(os.environ.get("HF_TOKEN"))
+
+
+def chat(messages: list[dict], temperature: float = 0) -> str:
+    """Single chat completion. Returns the text content string."""
+    client = get_client()
+    resp = client.chat_completion(messages=messages, temperature=temperature, max_tokens=2048)
+    return resp.choices[0].message.content or ""
 ```
 
 - [ ] **Step 2: Verify import**
 
 ```bash
-PYTHONPATH=packages .venv/bin/python -c "from ingest._deepseek import FLASH, PRO, available; print('OK', FLASH, PRO)"
+PYTHONPATH=packages .venv/bin/python -c "from ingest._ai import MODEL, available, chat; print('OK', MODEL)"
 ```
 
-Expected: `OK deepseek-v4-flash deepseek-v4-pro`
+Expected: `OK deepseek-ai/DeepSeek-V4-Pro`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/ingest/_deepseek.py
-git commit -m "feat: add DeepSeek shared client module"
+git add packages/ingest/_ai.py
+git commit -m "feat: add HuggingFace AI client (DeepSeek-V4-Pro)"
 ```
 
 ---
 
-## Task 6: News sentiment — DeepSeek Flash
+## Task 6: News sentiment — DeepSeek-V4-Pro via HuggingFace
 
 **Files:**
 - Create: `packages/ingest/news_sentiment.py`
@@ -764,13 +773,13 @@ Expected: `ModuleNotFoundError: No module named 'ingest.news_sentiment'`
 
 ```python
 # packages/ingest/news_sentiment.py
-"""News sentiment scoring via DeepSeek-V4-Flash. Incremental — skips already-scored rows."""
+"""News sentiment scoring via DeepSeek-V4-Pro (HuggingFace). Incremental — skips already-scored rows."""
 from __future__ import annotations
 import json
 import math
 import re
 import pandas as pd
-from ingest._deepseek import FLASH, get_client, available
+from ingest._ai import available, chat
 
 BATCH_SIZE = 32
 _SYSTEM = (
@@ -801,18 +810,12 @@ def _parse_response(content: str, expected_count: int) -> list[dict]:
 
 
 def _call_api(titles: list[str]) -> list[dict]:
-    client = get_client()
-    resp = client.chat.completions.create(
-        model=FLASH,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user",   "content": _build_batch_prompt(titles)},
-        ],
-        temperature=0,
-        response_format={"type": "json_object"},
-    )
-    raw = resp.choices[0].message.content or "[]"
-    # DeepSeek may wrap in {"results": [...]} — unwrap
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user",   "content": _build_batch_prompt(titles)},
+    ]
+    raw = chat(messages, temperature=0)
+    # Model may wrap array in {"results": [...]} — unwrap if needed
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
@@ -1372,7 +1375,7 @@ git commit -m "feat: add retail sentiment scraper (IG/Myfxbook/OANDA/PutCall/NR 
 
 ---
 
-## Task 9: Market synthesis — DeepSeek Pro
+## Task 9: Market synthesis — DeepSeek-V4-Pro via HuggingFace
 
 **Files:**
 - Create: `packages/ingest/market_synthesis.py`
@@ -1446,13 +1449,13 @@ Expected: `ModuleNotFoundError: No module named 'ingest.market_synthesis'`
 
 ```python
 # packages/ingest/market_synthesis.py
-"""Weekly per-market intelligence synthesis via DeepSeek-V4-Pro."""
+"""Weekly per-market intelligence synthesis via DeepSeek-V4-Pro (HuggingFace)."""
 from __future__ import annotations
 import json
 import re
 from pathlib import Path
 import pandas as pd
-from ingest._deepseek import PRO, get_client, available
+from ingest._ai import available, chat
 
 REQUIRED_SYNTHESIS_KEYS = ("summary", "confluence_score", "key_factors", "watch")
 _DEFAULT = {"summary": "", "confluence_score": 0.0, "key_factors": [], "watch": ""}
@@ -1488,17 +1491,12 @@ def _parse_synthesis_response(content: str) -> dict:
 
 
 def _call_api(payload: dict) -> dict:
-    client = get_client()
-    resp = client.chat.completions.create(
-        model=PRO,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user",   "content": _build_synthesis_prompt(payload)},
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    return _parse_synthesis_response(resp.choices[0].message.content or "{}")
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user",   "content": _build_synthesis_prompt(payload)},
+    ]
+    raw = chat(messages, temperature=0.1)
+    return _parse_synthesis_response(raw)
 
 
 def synthesize_market(payload: dict) -> dict:
@@ -1618,7 +1616,8 @@ if str(PACKAGES_DIR) not in sys.path:
     sys.path.insert(0, str(PACKAGES_DIR))
 
 from ingest import cftc_cot, indicators, news, normalize, prices, zones  # noqa: E402
-from ingest import tff_cot, regime as regime_mod, retail_sentiment, market_synthesis, news_sentiment  # noqa: E402
+from ingest import tff_cot, regime as regime_mod, retail_sentiment, market_synthesis, news_sentiment  # noqa: E402  # noqa: E402
+# _ai module loaded lazily inside news_sentiment + market_synthesis
 from ingest.universe import UNIVERSE, sectors  # noqa: E402
 from ingest.zones import annotate_divergence  # noqa: E402
 

@@ -411,35 +411,34 @@ For financials, replace zone badges with a single HMM regime badge (e.g., `● t
 
 ```toml
 # pyproject.toml additions
-openai = ">=1.30"         # DeepSeek API is OpenAI-compatible — use openai client
+huggingface_hub = ">=0.23"   # HuggingFace InferenceClient for DeepSeek-V4-Pro
 hmmlearn = ">=0.3"
-scikit-learn = ">=1.4"    # hmmlearn dependency — add explicitly
+scikit-learn = ">=1.4"       # hmmlearn dependency — add explicitly
 lxml = ">=5.0"
 ```
 
-FinBERT/torch/transformers are **removed** — replaced by DeepSeek API. No local model, no GPU requirement, no 700MB Docker layer.
+FinBERT/torch/transformers and the direct DeepSeek API are **removed**. All AI inference uses **DeepSeek-V4-Pro via HuggingFace Inference API**. No local model, no GPU requirement.
 
 **Dockerfile — new secret mount:**
 ```dockerfile
-# No model bake-in needed. API key injected at runtime via Fly secret.
-# DEEPSEEK_API_KEY set via: fly secrets set DEEPSEEK_API_KEY=sk-...
+# HF_TOKEN injected at runtime via Fly secret.
+# fly secrets set HF_TOKEN=hf_...
 ```
 
-**GitHub Actions secrets:** Add `DEEPSEEK_API_KEY` to repo secrets for cron jobs.
+**GitHub Actions secrets:** Add `HF_TOKEN` to repo secrets for cron jobs.
 
-**DeepSeek client initialisation (shared across modules):**
+**Shared AI client (`packages/ingest/_ai.py`):**
 ```python
-# packages/ingest/_deepseek.py
-from openai import OpenAI
+from huggingface_hub import InferenceClient
 
-def get_client() -> OpenAI:
-    return OpenAI(
-        api_key=os.environ["DEEPSEEK_API_KEY"],
-        base_url="https://api.deepseek.com/v1",
-    )
+MODEL = "deepseek-ai/DeepSeek-V4-Pro"
 
-FLASH = "deepseek-v4-flash"   # news sentiment — fast, cheap
-PRO   = "deepseek-v4-pro"     # market synthesis — full power
+def get_client() -> InferenceClient:
+    return InferenceClient(model=MODEL, token=os.environ["HF_TOKEN"])
+
+def chat(messages: list[dict], temperature: float = 0) -> str:
+    resp = get_client().chat_completion(messages=messages, temperature=temperature, max_tokens=2048)
+    return resp.choices[0].message.content or ""
 ```
 
 ---
