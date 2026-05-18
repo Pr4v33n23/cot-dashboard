@@ -131,6 +131,7 @@
 					<ZoneBadge zone={z} magnitude={0.8} />
 					<span class="zb-text">{ZONE_NAMES[z]}</span>
 				{/each}
+				<a href={`/intelligence?sym=${symbol}`} class="ai-link num">✦ AI Analysis</a>
 			</section>
 		{/if}
 
@@ -236,6 +237,21 @@
 		align-items: center;
 		gap: var(--sp-3);
 		flex-wrap: wrap;
+	}
+	.ai-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px 10px;
+		border-radius: var(--r-sm);
+		font-size: var(--fs-11);
+		color: var(--zone-a2);
+		background: rgba(183,148,246,.08);
+		border: 1px solid rgba(183,148,246,.2);
+		transition: background .12s;
+	}
+	.ai-link:hover {
+		background: rgba(183,148,246,.16);
 	}
 	.zb-label {
 		font-size: var(--fs-11);
