@@ -48,6 +48,7 @@ from .schemas import (
     ChatMessage, ChatRequest, ChatResponse,
     ExtremesRow,
     AnalogueEntry, AnaloguesResponse,
+    AlertRule, AlertTrigger,
 )
 
 
@@ -638,6 +639,33 @@ def analogues_endpoint(symbol: str, top_n: int = Query(default=5, le=10)) -> Ana
         current_cot_index=round(current_cot, 1),
         analogues=results[:top_n],
     )
+
+
+@app.get("/alerts", response_model=list[AlertRule])
+def list_alerts_endpoint():
+    from ingest.alerts import list_alerts  # noqa: PLC0415
+    return list_alerts()
+
+
+@app.post("/alerts", response_model=AlertRule)
+def create_alert_endpoint(rule: AlertRule):
+    from ingest.alerts import create_alert  # noqa: PLC0415
+    return create_alert(rule.symbol, rule.field, rule.condition, rule.threshold, rule.label)
+
+
+@app.delete("/alerts/{alert_id}")
+def delete_alert_endpoint(alert_id: str):
+    from ingest.alerts import delete_alert  # noqa: PLC0415
+    if not delete_alert(alert_id):
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"ok": True}
+
+
+@app.post("/alerts/check", response_model=list[AlertTrigger])
+def check_alerts_endpoint():
+    from ingest.alerts import check_alerts  # noqa: PLC0415
+    b = _bundle()
+    return check_alerts(b.annotated, b.synthesis)
 
 
 @app.post("/intelligence/refresh")

@@ -6,6 +6,8 @@
  */
 
 import type {
+	AlertRule,
+	AlertTrigger,
 	AnaloguesResponse,
 	ArticleResponse,
 	ChatMessage,
@@ -95,6 +97,12 @@ export const api = {
 		post<ChatResponse>('/chat', { messages }),
 	extremes: () => get<ExtremesRow[]>('/extremes'),
 	analogues: (symbol: string) => get<AnaloguesResponse>(`/analogues/${symbol}`),
+	alerts: {
+		list: () => get<AlertRule[]>('/alerts'),
+		create: (rule: AlertRule) => post<AlertRule>('/alerts', rule),
+		delete: (id: string) => fetch(`${BASE}/alerts/${id}`, { method: 'DELETE' }),
+		check: () => post<AlertTrigger[]>('/alerts/check', {}),
+	},
 };
 
 export { ApiError };

@@ -261,3 +261,25 @@ class AnaloguesResponse(BaseModel):
     symbol: str
     current_cot_index: float | None
     analogues: list[AnalogueEntry]
+
+
+class AlertRule(BaseModel):
+    id: str | None = None
+    symbol: str
+    field: str
+    condition: Literal["above", "below", "crosses_above", "crosses_below"]
+    threshold: float
+    label: str = ""
+    active: bool = True
+    last_triggered: str | None = None
+    created_at: str | None = None
+
+
+class AlertTrigger(BaseModel):
+    id: str
+    symbol: str
+    label: str
+    current_value: float
+    threshold: float
+    condition: str
+    last_triggered: str

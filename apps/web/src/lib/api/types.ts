@@ -254,3 +254,25 @@ export interface AnaloguesResponse {
 	current_cot_index: number | null;
 	analogues: AnalogueEntry[];
 }
+
+export interface AlertRule {
+	id?: string | null;
+	symbol: string;
+	field: string;
+	condition: 'above' | 'below' | 'crosses_above' | 'crosses_below';
+	threshold: number;
+	label?: string;
+	active?: boolean;
+	last_triggered?: string | null;
+	created_at?: string | null;
+}
+
+export interface AlertTrigger {
+	id: string;
+	symbol: string;
+	label: string;
+	current_value: number;
+	threshold: number;
+	condition: string;
+	last_triggered: string;
+}
