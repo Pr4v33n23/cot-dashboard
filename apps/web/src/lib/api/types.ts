@@ -211,3 +211,14 @@ export interface DigestResponse {
 	sector_signals: SectorSignal[];
 	watch_markets: WatchMarket[];
 }
+
+export interface ChatMessage {
+	role: 'user' | 'assistant' | 'system';
+	content: string;
+}
+
+export interface ChatResponse {
+	reply: string;
+	cited_markets: string[];
+	context_date: string | null;
+}

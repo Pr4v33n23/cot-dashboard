@@ -7,6 +7,8 @@
 
 import type {
 	ArticleResponse,
+	ChatMessage,
+	ChatResponse,
 	ContractMeta,
 	DivergenceRow,
 	HeatmapResponse,
@@ -28,6 +30,16 @@ class ApiError extends Error {
 async function get<T>(path: string): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, { headers: { Accept: 'application/json' } });
 	if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText} on ${path}`);
+	return (await res.json()) as T;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+	const res = await fetch(`${BASE}${path}`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+		body: JSON.stringify(body),
+	});
+	if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText} on POST ${path}`);
 	return (await res.json()) as T;
 }
 
@@ -77,6 +89,8 @@ export const api = {
 		if (opts?.limit) qs.set('limit', String(opts.limit));
 		return get<NewsResponse>(`/news?${qs}`);
 	},
+	chat: (messages: ChatMessage[]) =>
+		post<ChatResponse>('/chat', { messages }),
 };
 
 export { ApiError };
