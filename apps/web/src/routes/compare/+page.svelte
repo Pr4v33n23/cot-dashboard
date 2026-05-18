@@ -30,7 +30,13 @@
 		} else if (selected.length < MAX_SYMS) {
 			selected = [...selected, sym];
 			loadMarket(sym);
+			searchInput = '';
 		}
+	}
+
+	function handleOutsideClick(e: MouseEvent) {
+		const target = e.target as Element;
+		if (!target.closest('.search-wrap')) searchInput = '';
 	}
 
 	async function loadMarket(sym: string) {
@@ -55,10 +61,12 @@
 		}
 	});
 
-	const cols = $derived(selected.length <= 2 ? 1 : 2);
+	const cols = $derived(selected.length === 1 ? 1 : 2);
 </script>
 
 <svelte:head><title>Compare · COT_LENS</title></svelte:head>
+
+<svelte:window onclick={handleOutsideClick} />
 
 <div class="page">
 	<header class="header">

@@ -26,7 +26,7 @@
 
 	function extremeColor(e: number): string {
 		if (e >= 0.7) return 'var(--zone-a1)';
-		if (e >= 0.4) return 'var(--pending, #f59e0b)';
+		if (e >= 0.4) return 'var(--pending)';
 		return 'var(--ink-faint)';
 	}
 

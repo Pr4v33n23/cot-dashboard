@@ -149,7 +149,7 @@
 		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
-		gap: var(--sp-5);
+		gap: var(--sp-4);
 		overflow-y: auto;
 		scrollbar-width: thin;
 	}
@@ -197,7 +197,7 @@
 	}
 	.tb-title {
 		font-weight: 600;
-		color: #f5a623;
+		color: var(--zone-a1);
 	}
 	.tb-row {
 		display: flex;
