@@ -29,6 +29,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Brainstorming sessions
+.superpowers/
+
 # Frontend
 node_modules/
 .svelte-kit/
