@@ -11,7 +11,10 @@ import pandas as pd
 from ingest._ai import available, chat
 
 REQUIRED_KEYS = ("macro_narrative", "sector_signals", "watch_markets")
-_DEFAULT: dict = {"macro_narrative": "", "sector_signals": [], "watch_markets": []}
+
+
+def _fresh_default() -> dict:
+    return {"macro_narrative": "", "sector_signals": [], "watch_markets": []}
 
 _SYSTEM = (
     "You are a quantitative market analyst producing a weekly intelligence digest. "
@@ -107,21 +110,36 @@ def build_digest_payload(
 
 
 def _parse_digest(content: str) -> dict:
+    # Strip markdown code fences if present
+    content = re.sub(r"```(?:json)?", "", content).strip()
+    # Find the outermost JSON object by locating first { and matching }
+    start = content.find("{")
+    if start == -1:
+        return _fresh_default()
+    depth = 0
+    end = -1
+    for i in range(start, len(content)):
+        if content[i] == "{":
+            depth += 1
+        elif content[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end == -1:
+        return _fresh_default()
     try:
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if not match:
-            raise ValueError("no JSON object found")
-        data = json.loads(match.group())
+        data = json.loads(content[start:end])
         for k in REQUIRED_KEYS:
-            data.setdefault(k, _DEFAULT[k])
+            data.setdefault(k, [] if k != "macro_narrative" else "")
         return data
     except Exception:
-        return dict(_DEFAULT)
+        return _fresh_default()
 
 
 def generate_digest(payload: dict) -> dict:
     if not available():
-        return dict(_DEFAULT)
+        return _fresh_default()
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": f"Generate digest from:\n{json.dumps(payload, indent=2)}"},
@@ -150,6 +168,9 @@ def load_or_generate_digest(
             pass
     result = generate_digest(build_digest_payload(annotated, news_df, synthesis))
     result["generated_at"] = datetime.now(tz=timezone.utc).isoformat()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(result, indent=2, default=str))
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(result, indent=2, default=str))
+    except OSError:
+        pass  # disk failure — return result anyway
     return result
