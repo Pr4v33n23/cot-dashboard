@@ -150,3 +150,17 @@ button {
 		transition-duration: 0.01ms !important;
 	}
 }
+
+@media print {
+  :root {
+    --bg-canvas: #ffffff;
+    --bg-panel: #f8f8f8;
+    --bg-panel-2: #f0f0f0;
+    --ink: #0a0a0b;
+    --ink-muted: #444;
+    --ink-faint: #888;
+    --border: #ccc;
+    --border-soft: #e0e0e0;
+  }
+  body { background: white; color: #0a0a0b; font-size: 11pt; }
+}

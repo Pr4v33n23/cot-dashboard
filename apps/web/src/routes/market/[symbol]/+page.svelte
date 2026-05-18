@@ -136,6 +136,9 @@
 					<span class="zb-text">{ZONE_NAMES[z]}</span>
 				{/each}
 				<a href={`/intelligence?sym=${symbol}`} class="ai-link num">✦ AI Analysis</a>
+				<button class="export-btn" onclick={() => window.print()} title="Export as PDF"
+					>⬇ Export PDF</button
+				>
 				{#if seasonal?.deviation != null}
 					<div
 						class="seasonal-badge"
@@ -317,6 +320,39 @@
 	}
 	.sb-val {
 		font-weight: 700;
+	}
+	.export-btn {
+		padding: 4px 10px;
+		border-radius: var(--r-sm);
+		font-size: var(--fs-11);
+		color: var(--ink-muted);
+		background: var(--bg-panel);
+		border: 1px solid var(--border);
+		cursor: pointer;
+		transition: color 0.12s;
+	}
+	.export-btn:hover {
+		color: var(--ink);
+		border-color: var(--ink-muted);
+	}
+
+	@media print {
+		.export-btn,
+		.ai-link {
+			display: none;
+		}
+		.page {
+			overflow: visible !important;
+			padding: 0 !important;
+		}
+		.header {
+			padding-bottom: 12pt;
+			border-bottom: 2px solid #ccc;
+			margin-bottom: 12pt;
+		}
+		.title {
+			font-size: 18pt;
+		}
 	}
 	.zb-label {
 		font-size: var(--fs-11);

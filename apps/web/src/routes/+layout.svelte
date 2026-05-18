@@ -277,6 +277,12 @@
 		overflow: hidden;
 	}
 
+	@media print {
+		.sidebar { display: none !important; }
+		.app { grid-template-columns: 1fr !important; }
+		.main { overflow: visible !important; }
+	}
+
 	.brand {
 		padding: var(--sp-4) var(--sp-3) var(--sp-3);
 		border-bottom: 1px solid var(--border-soft);
