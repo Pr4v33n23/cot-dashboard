@@ -100,7 +100,11 @@ def label_states(
     return mapping
 
 
-def annotate_regimes(df: pd.DataFrame, model_cache_dir: Path | None = None) -> pd.DataFrame:
+def annotate_regimes(
+    df: pd.DataFrame,
+    model_cache_dir: Path | None = None,
+    force_refit: bool = False,
+) -> pd.DataFrame:
     out = df.copy()
     out["regime_label"] = None
     out["regime_proba"] = [None] * len(out)
@@ -115,11 +119,29 @@ def annotate_regimes(df: pd.DataFrame, model_cache_dir: Path | None = None) -> p
         return out
 
     X_valid = X[valid_mask]
-    model = fit_hmm(X_valid)
+    sym = str(df["symbol"].iloc[0]) if "symbol" in df.columns else "unknown"
+
+    # Load from cache if available and not forcing a refit
+    model = None
+    state_map = None
+    if model_cache_dir is not None and not force_refit:
+        cache_path = model_cache_dir / f"regime_{sym}.pkl"
+        if cache_path.exists():
+            try:
+                with open(cache_path, "rb") as f:
+                    obj = pickle.load(f)
+                model = obj["model"]
+                state_map = obj["state_map"]
+            except Exception:
+                model = None
+
+    if model is None:
+        model = fit_hmm(X_valid)
     if model is None:
         return out
 
-    state_map = label_states(model, X_valid, df.iloc[valid_mask.nonzero()[0]])
+    if state_map is None:
+        state_map = label_states(model, X_valid, df.iloc[valid_mask.nonzero()[0]])
     posteriors = model.predict_proba(X_valid)
     raw_states = model.predict(X_valid)
     labels = [state_map.get(s, "ranging") for s in raw_states]
@@ -154,8 +176,9 @@ def annotate_regimes(df: pd.DataFrame, model_cache_dir: Path | None = None) -> p
 def annotate_all_regimes(
     annotated: dict[str, pd.DataFrame],
     model_cache_dir: Path | None = None,
+    force_refit: bool = False,
 ) -> dict[str, pd.DataFrame]:
     result = {}
     for sym, df in annotated.items():
-        result[sym] = annotate_regimes(df, model_cache_dir)
+        result[sym] = annotate_regimes(df, model_cache_dir, force_refit=force_refit)
     return result
