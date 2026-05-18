@@ -213,3 +213,19 @@ class DigestResponse(BaseModel):
     macro_narrative: str
     sector_signals: list[SectorSignal]
     watch_markets: list[WatchMarket]
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+    stream: bool = False
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    cited_markets: list[str] = Field(default_factory=list)
+    context_date: str | None = None

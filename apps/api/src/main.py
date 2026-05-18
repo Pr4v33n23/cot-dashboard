@@ -26,6 +26,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .article import fetch_article
+from .chat import answer as chat_answer
 from .data import Bundle, build_bundle, sector_of, CACHE_DIR
 from .schemas import (
     ArticleResponse,
@@ -44,6 +45,7 @@ from .schemas import (
     RetailSentimentItem, RetailSentimentResponse,
     RegimeResponse, SynthesisResponse,
     SectorSignal, WatchMarket, DigestResponse,
+    ChatMessage, ChatRequest, ChatResponse,
 )
 
 
@@ -540,3 +542,13 @@ def intelligence_refresh_endpoint() -> dict:
     b = _bundle()
     load_or_generate_digest(b.annotated, b.news_df, b.synthesis, CACHE_DIR, force=True)
     return {"ok": True}
+
+
+# ── /chat ──────────────────────────────────────────────────────────────────
+@app.post("/chat", response_model=ChatResponse)
+def chat_endpoint(req: ChatRequest) -> ChatResponse:
+    """Natural language analyst grounded in live COT bundle data."""
+    b = _bundle()
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    reply, cited, ctx_date = chat_answer(messages, b)
+    return ChatResponse(reply=reply, cited_markets=cited, context_date=ctx_date)
