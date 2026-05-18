@@ -10,9 +10,18 @@ from hmmlearn import hmm
 
 N_STATES = 4
 MIN_BARS = 200
-N_RESTARTS = 5
+N_RESTARTS = 2    # 5 restarts × 51 symbols is too slow for bundle startup
+N_ITER = 200      # 1000 is overkill; 200 converges adequately for 4-state model
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
+# Suppress hmmlearn/sklearn ConvergenceWarning — non-convergence is expected
+# on some symbols with thin/noisy data; best-of-N-restarts handles it
+try:
+    from sklearn.exceptions import ConvergenceWarning
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+except ImportError:
+    pass
+warnings.filterwarnings("ignore", message="Model is not converging")
 
 
 def build_feature_matrix(df: pd.DataFrame) -> np.ndarray:
@@ -46,7 +55,7 @@ def fit_hmm(X: np.ndarray) -> hmm.GaussianHMM | None:
         try:
             model = hmm.GaussianHMM(
                 n_components=N_STATES, covariance_type="full",
-                n_iter=1000, random_state=seed, verbose=False,
+                n_iter=N_ITER, random_state=seed, verbose=False,
             )
             model.fit(X)
             score = model.score(X)

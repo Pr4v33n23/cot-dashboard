@@ -188,18 +188,46 @@ def market_endpoint(
     mask = (df["date"] >= pd.Timestamp(from_date)) & (df["date"] <= pd.Timestamp(to_date))
     sub = df[mask]
 
-    bar_cols = ["open", "high", "low", "close", "volume", "sma_fast", "sma_slow",
-                "cot_index_comm", "net_commercials", "pm_long", "pm_short",
-                "sd_long", "sd_short", "mm_long", "mm_short", "ucl", "lcl",
-                "A1", "A2", "A3", "A4", "A5", "n_zones"]
+    _bool_cols  = {"A1", "A2", "A3", "A4", "A5"}
+    _int_cols   = {"n_zones", "comm_spec_divergence", "am_lf_divergence", "regime_weeks"}
+    _str_cols   = {"regime_label", "sentiment_label", "sentiment_reason"}
+    _list_cols  = {"regime_proba"}
+    bar_cols = [
+        "open", "high", "low", "close", "volume", "sma_fast", "sma_slow",
+        "cot_index_comm", "net_commercials", "pm_long", "pm_short",
+        "sd_long", "sd_short", "mm_long", "mm_short", "ucl", "lcl",
+        "open_interest", "nr_long", "nr_short",
+        "dealer_long", "dealer_short", "am_long", "am_short", "lf_long", "lf_short",
+        "A1", "A2", "A3", "A4", "A5", "n_zones",
+        "comm_spec_divergence", "am_lf_divergence",
+        "regime_label", "regime_proba", "regime_weeks",
+        "confluence_score", "sentiment_score", "sentiment_label", "sentiment_reason",
+    ]
+
+    def _cast(col: str, val):
+        if col in _bool_cols:   return bool(val)
+        if col in _int_cols:    return int(val)
+        if col in _str_cols:    return str(val)
+        if col in _list_cols:   return val if isinstance(val, list) else None
+        return float(val)
+
     bars: list[BarRow] = []
     for _, row in sub.iterrows():
-        bars.append(BarRow(
-            date=row["date"].date(),
-            **{c: (None if pd.isna(row.get(c)) else (bool(row[c]) if c in ("A1","A2","A3","A4","A5")
-                                                     else (int(row[c]) if c == "n_zones" else float(row[c]))))
-               for c in bar_cols if c in row.index},
-        ))
+        fields: dict = {"date": row["date"].date()}
+        for c in bar_cols:
+            if c not in row.index:
+                continue
+            v = row.get(c)
+            if c in _list_cols:
+                fields[c] = v if isinstance(v, list) else None
+            elif c in _str_cols:
+                fields[c] = None if (v is None or (isinstance(v, float) and pd.isna(v))) else str(v)
+            else:
+                try:
+                    fields[c] = None if (v is None or (isinstance(v, float) and pd.isna(v))) else _cast(c, v)
+                except (ValueError, TypeError):
+                    fields[c] = None
+        bars.append(BarRow(**fields))
 
     return MarketDetail(
         contract=ContractMeta(
