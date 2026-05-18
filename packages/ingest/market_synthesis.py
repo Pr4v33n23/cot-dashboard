@@ -11,6 +11,83 @@ from ingest._ai import available, chat
 REQUIRED_SYNTHESIS_KEYS = ("summary", "confluence_score", "key_factors", "watch")
 _DEFAULT: dict = {"summary": "", "confluence_score": 0.0, "key_factors": [], "watch": ""}
 
+
+def _deterministic_synthesis(payload: dict) -> dict:
+    """Rule-based confluence score when AI is unavailable.
+
+    Scores 0-1 based on how many intelligence layers are active:
+    1. COT extreme (cot_index >= 85 or <= 15)
+    2. Commercial/spec divergence active (>= 2 weeks)
+    3. OI confirming (|change| >= 3%)
+    4. Retail contra (short% >= 65 or <= 35 when commercials extreme)
+    5. Regime is accumulation or distribution (not ranging)
+    """
+    factors: list[str] = []
+    score_parts: list[float] = []
+
+    cot = payload.get("cot", {})
+    comm_idx = float(cot.get("comm_cot_index", 50) or 50)
+    div_weeks = int(cot.get("divergence_weeks", 0) or 0)
+
+    oi = payload.get("open_interest", {})
+    oi_chg = abs(float(oi.get("change_pct", 0) or 0))
+
+    retail = payload.get("retail_sentiment", {})
+    avg_short = float(retail.get("avg_short_pct", 50) or 50)
+
+    regime = payload.get("regime", {})
+    regime_label = str(regime.get("label", "ranging") or "ranging")
+    regime_conf = float(regime.get("confidence", 0.5) or 0.5)
+
+    # 1. COT extreme
+    if comm_idx >= 85 or comm_idx <= 15:
+        factors.append("extreme commercial positioning")
+        score_parts.append(min(1.0, abs(comm_idx - 50) / 50))
+
+    # 2. Divergence active
+    if div_weeks >= 2:
+        factors.append(f"commercial/spec divergence ({div_weeks} wks)")
+        score_parts.append(min(1.0, div_weeks / 8))
+
+    # 3. OI confirmation
+    if oi_chg >= 3.0:
+        factors.append(f"OI {'expansion' if oi_chg > 0 else 'contraction'} ({oi_chg:.1f}%)")
+        score_parts.append(min(1.0, oi_chg / 10))
+
+    # 4. Retail contra (crowd wrong-sided)
+    if comm_idx >= 70 and avg_short >= 60:
+        factors.append(f"retail {avg_short:.0f}% short vs commercial long")
+        score_parts.append((avg_short - 50) / 50)
+    elif comm_idx <= 30 and avg_short <= 40:
+        factors.append(f"retail {100-avg_short:.0f}% long vs commercial short")
+        score_parts.append((50 - avg_short) / 50)
+
+    # 5. Regime signal
+    if regime_label in ("accumulation", "distribution", "trending"):
+        factors.append(f"regime: {regime_label}")
+        score_parts.append(regime_conf * 0.5)
+
+    confluence = round(sum(score_parts) / max(len(score_parts), 1), 3) if score_parts else 0.0
+    confluence = min(1.0, confluence)
+
+    mtype = payload.get("market_type", "physical")
+    sym = payload.get("symbol", "")
+    summary = (
+        f"COT Index at {comm_idx:.0f}. "
+        + (f"Commercial/spec divergence active for {div_weeks} weeks. " if div_weeks >= 2 else "")
+        + (f"OI {oi_chg:+.1f}% this week. " if oi_chg >= 2 else "")
+        + (f"Retail {avg_short:.0f}% short. " if avg_short != 50 else "")
+        + f"Regime: {regime_label}."
+    ).strip()
+
+    return {
+        "summary": summary,
+        "confluence_score": confluence,
+        "key_factors": factors,
+        "watch": "",
+        "source": "deterministic",
+    }
+
 _SYSTEM = (
     "You are a quantitative market analyst. Given structured market data, "
     "produce a JSON object with: "
@@ -47,13 +124,18 @@ def _parse_synthesis_response(content: str) -> dict:
 
 def synthesize_market(payload: dict) -> dict:
     if not available():
-        return dict(_DEFAULT)
+        # AI unavailable — compute deterministic confluence from COT signals
+        return _deterministic_synthesis(payload)
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user",   "content": _build_synthesis_prompt(payload)},
     ]
     raw = chat(messages, temperature=0.1)
-    return _parse_synthesis_response(raw)
+    result = _parse_synthesis_response(raw)
+    # AI returned empty (rate-limit / billing) — fall back to deterministic
+    if not result.get("key_factors") and result.get("confluence_score", 0) == 0.0:
+        return _deterministic_synthesis(payload)
+    return result
 
 
 def _build_payload(
