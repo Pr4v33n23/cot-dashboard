@@ -47,6 +47,7 @@ from .schemas import (
     SectorSignal, WatchMarket, DigestResponse,
     ChatMessage, ChatRequest, ChatResponse,
     ExtremesRow,
+    AnalogueEntry, AnaloguesResponse,
 )
 
 
@@ -577,6 +578,66 @@ def extremes_endpoint() -> list[ExtremesRow]:
         ))
     rows.sort(key=lambda r: r.extremeness, reverse=True)
     return rows
+
+
+@app.get("/analogues/{symbol}", response_model=AnaloguesResponse)
+def analogues_endpoint(symbol: str, top_n: int = Query(default=5, le=10)) -> AnaloguesResponse:
+    """Find the N most similar historical COT profiles for this symbol."""
+    import numpy as np  # noqa: PLC0415
+    b = _bundle()
+    df = b.annotated.get(symbol)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for {symbol}")
+
+    def _vec(row):
+        ci = float(row.get("cot_index_comm", 50) or 50) / 100.0
+        dw = min(float(row.get("comm_spec_divergence", 0) or row.get("am_lf_divergence", 0) or 0), 12) / 12.0
+        nz = float(row.get("n_zones", 0) or 0) / 5.0
+        return np.array([ci, dw, nz])
+
+    current_row = df.iloc[-1]
+    current_vec = _vec(current_row)
+    current_cot = float(current_row.get("cot_index_comm", 50) or 50)
+    norm_cur = np.linalg.norm(current_vec)
+
+    results = []
+    close_col = "close"
+    cutoff = len(df) - 4
+    for i in range(52, cutoff):
+        row = df.iloc[i]
+        vec = _vec(row)
+        norm_v = np.linalg.norm(vec)
+        if norm_cur < 1e-9 or norm_v < 1e-9:
+            continue
+        sim = float(np.dot(current_vec, vec) / (norm_cur * norm_v))
+
+        def _fwd(weeks, idx=i):
+            j = idx + weeks
+            if j >= len(df):
+                return None
+            p0 = df.iloc[idx].get(close_col)
+            p1 = df.iloc[j].get(close_col)
+            if p0 and p1 and float(p0) > 0:
+                return round((float(p1) - float(p0)) / float(p0) * 100, 2)
+            return None
+
+        results.append(AnalogueEntry(
+            date=row["date"].date() if hasattr(row["date"], "date") else row["date"],
+            weeks_ago=len(df) - 1 - i,
+            similarity=round(sim, 3),
+            cot_index_then=round(float(row.get("cot_index_comm", 50) or 50), 1),
+            price_then=float(row.get(close_col)) if row.get(close_col) else None,
+            fwd_4w_pct=_fwd(4),
+            fwd_8w_pct=_fwd(8),
+            fwd_12w_pct=_fwd(12),
+        ))
+
+    results.sort(key=lambda x: x.similarity, reverse=True)
+    return AnaloguesResponse(
+        symbol=symbol,
+        current_cot_index=round(current_cot, 1),
+        analogues=results[:top_n],
+    )
 
 
 @app.post("/intelligence/refresh")

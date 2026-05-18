@@ -6,6 +6,7 @@
  */
 
 import type {
+	AnaloguesResponse,
 	ArticleResponse,
 	ChatMessage,
 	ChatResponse,
@@ -93,6 +94,7 @@ export const api = {
 	chat: (messages: ChatMessage[]) =>
 		post<ChatResponse>('/chat', { messages }),
 	extremes: () => get<ExtremesRow[]>('/extremes'),
+	analogues: (symbol: string) => get<AnaloguesResponse>(`/analogues/${symbol}`),
 };
 
 export { ApiError };

@@ -244,3 +244,20 @@ class ExtremesRow(BaseModel):
     n_zones: int
     regime_label: str | None
     confluence_score: float
+
+
+class AnalogueEntry(BaseModel):
+    date: date
+    weeks_ago: int
+    similarity: float
+    cot_index_then: float
+    price_then: float | None
+    fwd_4w_pct: float | None
+    fwd_8w_pct: float | None
+    fwd_12w_pct: float | None
+
+
+class AnaloguesResponse(BaseModel):
+    symbol: str
+    current_cot_index: float | None
+    analogues: list[AnalogueEntry]

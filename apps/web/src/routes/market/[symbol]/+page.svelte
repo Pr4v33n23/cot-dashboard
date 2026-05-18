@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$api/client';
-	import type { MarketDetail, NewsItem, ZoneKey } from '$api/types';
+	import type { AnaloguesResponse, MarketDetail, NewsItem, ZoneKey } from '$api/types';
 	import { ZONE_NAMES } from '$api/types';
 	import Chart from '$components/chart/Chart.svelte';
 	import NewsRail from '$components/news/NewsRail.svelte';
@@ -14,6 +14,7 @@
 	let symbol = $derived(page.params.symbol!);
 	let detail = $state<MarketDetail | null>(null);
 	let news = $state<NewsItem[]>([]);
+	let analogues = $state<AnaloguesResponse | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let range = $state<'1y' | '3y' | '5y' | 'max'>('3y');
@@ -37,6 +38,7 @@
 			]);
 			detail = m;
 			news = n.items;
+			api.analogues(symbol).then((a) => { analogues = a; }).catch(() => {});
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
@@ -139,6 +141,32 @@
 			<div class="chart-col">
 				<Chart bars={detail.bars} {news} height={560} />
 				<ZoneTimeline bars={detail.bars} />
+				{#if analogues && analogues.analogues.length > 0}
+					<section class="analogues-section">
+						<div class="section-label">Historical Analogues · {analogues.analogues.length} closest matches</div>
+						<div class="analogue-note">Times when this market's COT profile was most similar to today. Historical context only.</div>
+						<table class="analogue-table">
+							<thead>
+								<tr><th>Date</th><th>Wks ago</th><th>Similarity</th><th>COT idx then</th><th>+4w</th><th>+8w</th><th>+12w</th></tr>
+							</thead>
+							<tbody>
+								{#each analogues.analogues as a}
+									<tr>
+										<td class="num">{a.date}</td>
+										<td class="num muted">{a.weeks_ago}</td>
+										<td class="num" style:color="var(--zone-a2)">{(a.similarity * 100).toFixed(0)}%</td>
+										<td class="num">{a.cot_index_then.toFixed(1)}</td>
+										{#each [a.fwd_4w_pct, a.fwd_8w_pct, a.fwd_12w_pct] as pct}
+											<td class="num" style:color={pct == null ? 'var(--ink-faint)' : pct > 0 ? 'var(--long)' : 'var(--short)'}>
+												{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`}
+											</td>
+										{/each}
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</section>
+				{/if}
 			</div>
 			<div class="news-col">
 				<NewsRail items={news} title="News · {symbol}" />
@@ -279,6 +307,57 @@
 		gap: var(--sp-3);
 		min-width: 0;
 		min-height: 0;
+		overflow-y: auto;
+		scrollbar-width: thin;
+		scrollbar-color: var(--border) transparent;
+	}
+	.analogues-section {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding-bottom: var(--sp-4);
+	}
+	.section-label {
+		font-size: var(--fs-12);
+		font-weight: 600;
+		color: var(--ink-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.analogue-note {
+		font-size: 11px;
+		color: var(--ink-faint);
+		font-style: italic;
+	}
+	.analogue-table {
+		width: 100%;
+		border-collapse: collapse;
+		background: var(--bg-panel);
+		border: 1px solid var(--border);
+		border-radius: var(--r-md);
+		overflow: hidden;
+	}
+	.analogue-table th {
+		padding: 6px 10px;
+		font-size: 10px;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+		border-bottom: 1px solid var(--border-soft);
+		text-align: left;
+	}
+	.analogue-table td {
+		padding: 6px 10px;
+		font-size: var(--fs-12);
+		border-bottom: 1px solid var(--border-soft);
+	}
+	.analogue-table tr:last-child td {
+		border-bottom: none;
+	}
+	.analogue-table tr:hover td {
+		background: var(--bg-hover);
+	}
+	.muted {
+		color: var(--ink-muted);
 	}
 	.news-col {
 		min-height: 0;

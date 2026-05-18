@@ -237,3 +237,20 @@ export interface ExtremesRow {
 	regime_label: string | null;
 	confluence_score: number;
 }
+
+export interface AnalogueEntry {
+	date: string;
+	weeks_ago: number;
+	similarity: number;
+	cot_index_then: number;
+	price_then: number | null;
+	fwd_4w_pct: number | null;
+	fwd_8w_pct: number | null;
+	fwd_12w_pct: number | null;
+}
+
+export interface AnaloguesResponse {
+	symbol: string;
+	current_cot_index: number | null;
+	analogues: AnalogueEntry[];
+}
