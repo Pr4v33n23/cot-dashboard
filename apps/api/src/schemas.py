@@ -192,3 +192,24 @@ class SynthesisResponse(BaseModel):
     key_factors: list[str]
     watch: str
     generated_at: datetime | None = None
+
+
+class SectorSignal(BaseModel):
+    sector: str
+    summary: str
+    signal: Literal["bullish", "bearish", "neutral"]
+
+
+class WatchMarket(BaseModel):
+    symbol: str
+    name: str
+    sector: str
+    confluence_score: float
+    reason: str
+
+
+class DigestResponse(BaseModel):
+    generated_at: datetime
+    macro_narrative: str
+    sector_signals: list[SectorSignal]
+    watch_markets: list[WatchMarket]

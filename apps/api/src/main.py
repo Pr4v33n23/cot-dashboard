@@ -43,6 +43,7 @@ from .schemas import (
     ZoneCatalogEntry,
     RetailSentimentItem, RetailSentimentResponse,
     RegimeResponse, SynthesisResponse,
+    SectorSignal, WatchMarket, DigestResponse,
 )
 
 
@@ -334,6 +335,7 @@ def news_for_symbol(
     from_date: date | None = Query(default=None, alias="from"),
     to_date: date | None = Query(default=None, alias="to"),
     limit: int = Query(default=200, ge=1, le=1000),
+    macro_only: bool = Query(default=False),
 ) -> NewsResponse:
     b = _bundle()
     _contract(symbol)  # 404 if unknown
@@ -349,6 +351,8 @@ def news_for_symbol(
         from_date=pd.Timestamp(from_date),
         to_date=pd.Timestamp(to_date),
     )
+    if macro_only:
+        sub = sub[sub["source_category"].isin(["macro", "agency"])]
     sub = sub.head(limit)
 
     items = [
@@ -396,6 +400,7 @@ def news_all(
     from_date: date | None = Query(default=None, alias="from"),
     to_date: date | None = Query(default=None, alias="to"),
     limit: int = Query(default=200, ge=1, le=1000),
+    macro_only: bool = Query(default=False),
 ) -> NewsResponse:
     b = _bundle()
     if from_date is None:
@@ -405,7 +410,10 @@ def news_all(
     sub = b.news_df[
         (b.news_df["date"] >= pd.Timestamp(from_date))
         & (b.news_df["date"] <= pd.Timestamp(to_date))
-    ].sort_values("date", ascending=False).head(limit)
+    ].sort_values("date", ascending=False)
+    if macro_only:
+        sub = sub[sub["source_category"].isin(["macro", "agency"])]
+    sub = sub.head(limit)
     items = [
         NewsItem(
             date=row["date"].to_pydatetime() if hasattr(row["date"], "to_pydatetime") else row["date"],
@@ -482,3 +490,47 @@ def synthesis_endpoint(symbol: str) -> SynthesisResponse:
         key_factors=data.get("key_factors", []),
         watch=data.get("watch", ""),
     )
+
+
+# ── /intelligence/digest ───────────────────────────────────────────────────
+@app.get("/intelligence/digest", response_model=DigestResponse)
+def intelligence_digest_endpoint() -> DigestResponse:
+    from ingest.intelligence import load_or_generate_digest  # noqa: PLC0415
+    b = _bundle()
+    data = load_or_generate_digest(b.annotated, b.news_df, b.synthesis, CACHE_DIR)
+
+    from ingest.universe import UNIVERSE as _UNI  # noqa: PLC0415
+    name_map = {c.symbol: c.name for c in _UNI}
+    sec_map  = {c.symbol: c.sector for c in _UNI}
+
+    watch: list[WatchMarket] = []
+    for wm in data.get("watch_markets", []):
+        sym = wm.get("symbol", "")
+        watch.append(WatchMarket(
+            symbol=sym,
+            name=name_map.get(sym, sym),
+            sector=sec_map.get(sym, ""),
+            confluence_score=float(b.synthesis.get(sym, {}).get("confluence_score", 0.0)),
+            reason=wm.get("reason", ""),
+        ))
+
+    generated_at_str = data.get("generated_at", datetime.utcnow().isoformat())
+    try:
+        generated_at = datetime.fromisoformat(generated_at_str.replace("Z", "+00:00"))
+    except Exception:
+        generated_at = datetime.utcnow()
+
+    return DigestResponse(
+        generated_at=generated_at,
+        macro_narrative=data.get("macro_narrative", ""),
+        sector_signals=[SectorSignal(**s) for s in data.get("sector_signals", [])],
+        watch_markets=watch,
+    )
+
+
+@app.post("/intelligence/refresh")
+def intelligence_refresh_endpoint() -> dict:
+    from ingest.intelligence import load_or_generate_digest  # noqa: PLC0415
+    b = _bundle()
+    load_or_generate_digest(b.annotated, b.news_df, b.synthesis, CACHE_DIR, force=True)
+    return {"ok": True}
