@@ -40,11 +40,16 @@
 	--zone-a5: #18e08f; /* hedger/spec imbalance — green */
 
 	/* ── Sector colors (sidebar grouping) ─────────────────────────────── */
-	--sec-grains: #c19a3a;
-	--sec-energy: #d97757;
-	--sec-metals: #a0aec0;
-	--sec-softs: #ed8936;
-	--sec-meats: #e07171;
+	--sec-grains:     #c19a3a;
+	--sec-energy:     #d97757;
+	--sec-metals:     #a0aec0;
+	--sec-softs:      #ed8936;
+	--sec-meats:      #e07171;
+	/* Financial sectors */
+	--sec-fx:         #7b61ff;
+	--sec-indices:    #38b2ac;
+	--sec-rates:      #63b3ed;
+	--sec-volatility: #fc8181;
 
 	/* ── Type ─────────────────────────────────────────────────────────── */
 	--font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;

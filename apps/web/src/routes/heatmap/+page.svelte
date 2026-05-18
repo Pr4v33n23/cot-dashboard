@@ -12,25 +12,37 @@
 
 	const grid = $derived.by(() => {
 		if (!resp) return [];
-		const bySym = new Map<string, { sector: string; cells: Record<ZoneKey, { active: boolean; magnitude: number }> }>();
+		const bySym = new Map<string, {
+			sector: string;
+			market_type: string;
+			regime_label: string | null;
+			cells: Record<ZoneKey, { active: boolean; magnitude: number }>;
+		}>();
 		for (const c of resp.cells) {
 			if (!bySym.has(c.symbol)) {
 				bySym.set(c.symbol, {
 					sector: c.sector,
+					market_type: c.market_type ?? 'physical',
+					regime_label: c.regime_label ?? null,
 					cells: {} as Record<ZoneKey, { active: boolean; magnitude: number }>
 				});
 			}
 			bySym.get(c.symbol)!.cells[c.zone] = { active: c.active, magnitude: c.magnitude };
 		}
-		// Sort by sector group then by zone count
+		// Sort: physicals first (by sector), then financials (by sector)
 		return Array.from(bySym.entries())
 			.map(([sym, v]) => ({
 				symbol: sym,
 				sector: v.sector,
+				market_type: v.market_type,
+				regime_label: v.regime_label,
 				cells: v.cells,
 				count: Object.values(v.cells).filter((c) => c.active).length
 			}))
 			.sort((a, b) => {
+				// Physicals before financials
+				if (a.market_type !== b.market_type)
+					return a.market_type === 'physical' ? -1 : 1;
 				if (a.sector !== b.sector) return a.sector.localeCompare(b.sector);
 				return b.count - a.count;
 			});
@@ -101,30 +113,44 @@
 				</thead>
 				<tbody>
 					{#each grid as row}
-						<tr>
+						<tr class:financial-row={row.market_type === 'financial'}>
 							<td class="sym-cell">
 								<a href={`/market/${row.symbol}`} class="sym-link num">{row.symbol}</a>
 								<span class="sector-dot" style:background={`var(--sec-${row.sector})`}></span>
 							</td>
-							{#each zones as z}
-								{@const cell = row.cells[z]}
-								<td class="zone-cell">
-									{#if cell?.active}
-										<div
-											class="filled"
-											style:--c={`var(--zone-${z.toLowerCase()})`}
-											style:--alpha={Math.max(0.35, Math.min(1, cell.magnitude))}
-										>
-											<span class="mag-text num">{cell.magnitude.toFixed(2)}</span>
+							{#if row.market_type === 'financial'}
+								<td class="zone-cell regime-span" colspan="5">
+									{#if row.regime_label}
+										<div class="regime-badge" data-regime={row.regime_label}>
+											<span class="regime-dot"></span>
+											<span class="regime-text">{row.regime_label}</span>
 										</div>
 									{:else}
-										<div class="empty-cell"></div>
+										<span class="no-regime">—</span>
 									{/if}
 								</td>
-							{/each}
-							<td class="count-cell num" data-tone={row.count >= 3 ? 'high' : row.count >= 1 ? 'mid' : 'low'}>
-								{row.count}
-							</td>
+								<td class="count-cell num" style:color="var(--ink-faint)">—</td>
+							{:else}
+								{#each zones as z}
+									{@const cell = row.cells[z]}
+									<td class="zone-cell">
+										{#if cell?.active}
+											<div
+												class="filled"
+												style:--c={`var(--zone-${z.toLowerCase()})`}
+												style:--alpha={Math.max(0.35, Math.min(1, cell.magnitude))}
+											>
+												<span class="mag-text num">{cell.magnitude.toFixed(2)}</span>
+											</div>
+										{:else}
+											<div class="empty-cell"></div>
+										{/if}
+									</td>
+								{/each}
+								<td class="count-cell num" data-tone={row.count >= 3 ? 'high' : row.count >= 1 ? 'mid' : 'low'}>
+									{row.count}
+								</td>
+							{/if}
 						</tr>
 					{/each}
 				</tbody>
@@ -171,7 +197,8 @@
 		background: var(--bg-panel);
 		border: 1px solid var(--border-soft);
 		border-radius: var(--r-md);
-		overflow: hidden;
+		overflow-x: auto;
+		overflow-y: visible;
 	}
 	.grid {
 		width: 100%;
@@ -279,6 +306,35 @@
 	.count-cell[data-tone='low'] {
 		color: var(--ink-faint);
 	}
+
+	/* Financial instrument rows */
+	.financial-row {
+		opacity: 0.92;
+	}
+	.regime-span {
+		text-align: left;
+		padding: 4px 12px;
+	}
+	.regime-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 3px 10px;
+		border-radius: 99px;
+		font-size: var(--fs-11);
+		font-family: var(--font-mono);
+		border: 1px solid;
+	}
+	.regime-badge[data-regime='trending']      { background: rgba(79,209,197,.12); color: var(--zone-a3); border-color: rgba(79,209,197,.3); }
+	.regime-badge[data-regime='accumulation']  { background: rgba(24,224,143,.10); color: var(--long);    border-color: rgba(24,224,143,.3); }
+	.regime-badge[data-regime='distribution']  { background: rgba(255,90,95,.10);  color: var(--short);   border-color: rgba(255,90,95,.3); }
+	.regime-badge[data-regime='ranging']       { background: rgba(138,138,147,.1); color: var(--ink-muted); border-color: var(--border); }
+	.regime-dot {
+		width: 5px; height: 5px; border-radius: 50%;
+		background: currentColor;
+	}
+	.regime-text { text-transform: capitalize; }
+	.no-regime { color: var(--ink-faint); font-size: var(--fs-11); }
 
 	.sk-table {
 		display: flex;

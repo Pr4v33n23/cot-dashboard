@@ -96,6 +96,8 @@ export interface HeatmapCell {
 	zone: ZoneKey;
 	active: boolean;
 	magnitude: number;
+	market_type: string;
+	regime_label?: string | null;
 }
 
 export interface HeatmapResponse {

@@ -256,19 +256,24 @@ def heatmap_endpoint(week_of: date | None = Query(default=None)) -> HeatmapRespo
     target_dt = pd.Timestamp(week_of) if week_of else None
     actual_date: pd.Timestamp | None = None
 
+    from ingest.universe import UNIVERSE as _UNI  # noqa: PLC0415
+    _mtype = {c.symbol: getattr(c, "market_type", "physical") for c in _UNI}
+
     for sym, g in b.annotated.items():
         if g.empty:
             continue
         if target_dt is None:
             row = g.iloc[-1]
         else:
-            # nearest bar <= target_dt
             sub = g[g["date"] <= target_dt]
             if sub.empty:
                 continue
             row = sub.iloc[-1]
         actual_date = row["date"]
         sec = sector_of(sym) or ""
+        mtype = _mtype.get(sym, "physical")
+        rlabel = row.get("regime_label")
+        regime = str(rlabel) if rlabel and not (isinstance(rlabel, float)) else None
         for z in ("A1", "A2", "A3", "A4", "A5"):
             cells.append(
                 HeatmapCell(
@@ -277,6 +282,8 @@ def heatmap_endpoint(week_of: date | None = Query(default=None)) -> HeatmapRespo
                     zone=z,
                     active=bool(row[z]),
                     magnitude=float(row[f"{z}_mag"]),
+                    market_type=mtype,
+                    regime_label=regime,
                 )
             )
 

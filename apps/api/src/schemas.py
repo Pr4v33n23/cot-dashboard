@@ -94,6 +94,8 @@ class HeatmapCell(BaseModel):
     zone: ZoneKey
     active: bool
     magnitude: float
+    market_type: str = "physical"
+    regime_label: str | None = None
 
 
 class HeatmapResponse(BaseModel):
