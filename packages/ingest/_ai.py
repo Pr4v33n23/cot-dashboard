@@ -27,11 +27,19 @@ def available() -> bool:
 
 
 def chat(messages: list[dict], temperature: float = 0) -> str:
-    """Single chat completion. Returns the text content string."""
-    client = get_client()
-    resp = client.chat_completion(
-        messages=messages,
-        temperature=temperature,
-        max_tokens=2048,
-    )
-    return resp.choices[0].message.content or ""
+    """Single chat completion. Returns empty string on any API error (graceful degradation)."""
+    try:
+        client = get_client()
+        resp = client.chat_completion(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=2048,
+        )
+        return resp.choices[0].message.content or ""
+    except EnvironmentError:
+        return ""
+    except Exception as e:
+        # 402 Payment Required, rate limits, network errors — never crash the caller
+        import warnings  # noqa: PLC0415
+        warnings.warn(f"DeepSeek API call failed ({type(e).__name__}): {e}. AI features disabled.", stacklevel=2)
+        return ""
