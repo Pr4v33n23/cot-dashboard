@@ -18,6 +18,7 @@
 		{ href: '/extremes', label: 'Extremes', short: 'EX' },
 		{ href: '/alerts', label: 'Alerts', short: '🔔' },
 		{ href: '/compare', label: 'Compare', short: '⊞' },
+		{ href: '/correlation', label: 'Correlation', short: '⊗' },
 		{ href: '/chat', label: 'Chat', short: '💬' },
 		{ href: '/intelligence', label: 'Intelligence', short: 'AI' }
 	];

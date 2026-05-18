@@ -300,3 +300,9 @@ class SeasonalityResponse(BaseModel):
     seasonal_avg: float | None
     deviation: float | None
     weeks: list[SeasonalWeek]
+
+
+class CorrelationResponse(BaseModel):
+    symbols: list[str]
+    matrix: list[list[float | None]]
+    as_of: date

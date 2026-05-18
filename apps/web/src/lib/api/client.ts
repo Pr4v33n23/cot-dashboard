@@ -13,6 +13,7 @@ import type {
 	ChatMessage,
 	ChatResponse,
 	ContractMeta,
+	CorrelationResponse,
 	DivergenceRow,
 	ExtremesRow,
 	HeatmapResponse,
@@ -105,6 +106,8 @@ export const api = {
 		check: () => post<AlertTrigger[]>('/alerts/check', {}),
 	},
 	seasonality: (symbol: string) => get<SeasonalityResponse>(`/seasonality/${symbol}`),
+	correlation: (window?: number) =>
+		get<CorrelationResponse>(`/correlation${window ? `?window=${window}` : ''}`),
 };
 
 export { ApiError };

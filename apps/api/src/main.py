@@ -50,6 +50,7 @@ from .schemas import (
     AnalogueEntry, AnaloguesResponse,
     AlertRule, AlertTrigger,
     SeasonalWeek, SeasonalityResponse,
+    CorrelationResponse,
 )
 
 
@@ -711,6 +712,46 @@ def seasonality_endpoint(symbol: str) -> SeasonalityResponse:
         deviation=deviation,
         weeks=weeks_out,
     )
+
+
+@app.get("/correlation", response_model=CorrelationResponse)
+def correlation_endpoint(window: int = Query(default=90, ge=20, le=365)) -> CorrelationResponse:
+    """Rolling correlation matrix of daily log-returns across all loaded markets."""
+    import numpy as np  # noqa: PLC0415
+    from datetime import date as _date  # noqa: PLC0415
+    b = _bundle()
+
+    series: dict[str, pd.Series] = {}
+    for sym, df in b.annotated.items():
+        if df.empty or "close" not in df.columns:
+            continue
+        close = df.set_index("date")["close"].dropna()
+        if len(close) < window + 5:
+            continue
+        log_ret = close.astype(float).pct_change().tail(window)
+        series[sym] = log_ret
+
+    if not series:
+        return CorrelationResponse(symbols=[], matrix=[], as_of=_date.today())
+
+    symbols = sorted(series.keys())
+    n = len(symbols)
+    matrix: list[list[float | None]] = [[None] * n for _ in range(n)]
+
+    for i, s1 in enumerate(symbols):
+        matrix[i][i] = 1.0
+        for j, s2 in enumerate(symbols):
+            if j <= i:
+                continue
+            aligned = pd.concat([series[s1], series[s2]], axis=1).dropna()
+            if len(aligned) < 20:
+                continue
+            corr = float(aligned.iloc[:, 0].corr(aligned.iloc[:, 1]))
+            if corr == corr:  # not NaN
+                matrix[i][j] = round(corr, 3)
+                matrix[j][i] = round(corr, 3)
+
+    return CorrelationResponse(symbols=symbols, matrix=matrix, as_of=_date.today())
 
 
 @app.post("/intelligence/refresh")

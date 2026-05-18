@@ -293,3 +293,9 @@ export interface SeasonalityResponse {
 	deviation: number | null;
 	weeks: SeasonalWeek[];
 }
+
+export interface CorrelationResponse {
+	symbols: string[];
+	matrix: (number | null)[][];
+	as_of: string;
+}
