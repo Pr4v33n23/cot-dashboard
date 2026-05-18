@@ -18,7 +18,7 @@ Run locally:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterator
 
 import pandas as pd
@@ -506,24 +506,30 @@ def intelligence_digest_endpoint() -> DigestResponse:
     watch: list[WatchMarket] = []
     for wm in data.get("watch_markets", []):
         sym = wm.get("symbol", "")
+        if not sym:
+            continue
         watch.append(WatchMarket(
             symbol=sym,
             name=name_map.get(sym, sym),
             sector=sec_map.get(sym, ""),
-            confluence_score=float(b.synthesis.get(sym, {}).get("confluence_score", 0.0)),
+            confluence_score=float((b.synthesis or {}).get(sym, {}).get("confluence_score", 0.0)),
             reason=wm.get("reason", ""),
         ))
 
-    generated_at_str = data.get("generated_at", datetime.utcnow().isoformat())
+    generated_at_str = data.get("generated_at", datetime.now(tz=timezone.utc).isoformat())
     try:
         generated_at = datetime.fromisoformat(generated_at_str.replace("Z", "+00:00"))
     except Exception:
-        generated_at = datetime.utcnow()
+        generated_at = datetime.now(tz=timezone.utc)
 
     return DigestResponse(
         generated_at=generated_at,
         macro_narrative=data.get("macro_narrative", ""),
-        sector_signals=[SectorSignal(**s) for s in data.get("sector_signals", [])],
+        sector_signals=[
+            SectorSignal(**{**s, "signal": str(s.get("signal", "neutral")).lower()})
+            for s in data.get("sector_signals", [])
+            if s.get("sector")
+        ],
         watch_markets=watch,
     )
 
