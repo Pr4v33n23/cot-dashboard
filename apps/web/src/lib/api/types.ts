@@ -190,3 +190,24 @@ export interface SynthesisResponse {
   watch: string;
   generated_at?: string | null;
 }
+
+export interface SectorSignal {
+	sector: string;
+	summary: string;
+	signal: 'bullish' | 'bearish' | 'neutral';
+}
+
+export interface WatchMarket {
+	symbol: string;
+	name: string;
+	sector: string;
+	confluence_score: number;
+	reason: string;
+}
+
+export interface DigestResponse {
+	generated_at: string;
+	macro_narrative: string;
+	sector_signals: SectorSignal[];
+	watch_markets: WatchMarket[];
+}

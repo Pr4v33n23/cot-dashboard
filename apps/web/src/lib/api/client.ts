@@ -14,7 +14,7 @@ import type {
 	NewsResponse,
 	StatusResponse,
 	TodayRow,
-	RetailSentimentResponse, RegimeResponse, SynthesisResponse,
+	RetailSentimentResponse, RegimeResponse, SynthesisResponse, DigestResponse,
 } from './types';
 
 const BASE = '/api';
@@ -69,6 +69,14 @@ export const api = {
 		get<RegimeResponse>(`/regime/${symbol}`),
 	synthesis: (symbol: string) =>
 		get<SynthesisResponse>(`/synthesis/${symbol}`),
+	digest: () =>
+		get<DigestResponse>('/intelligence/digest'),
+	newsAllMacro: (opts?: { limit?: number }) => {
+		const qs = new URLSearchParams();
+		qs.set('macro_only', 'true');
+		if (opts?.limit) qs.set('limit', String(opts.limit));
+		return get<NewsResponse>(`/news?${qs}`);
+	},
 };
 
 export { ApiError };
