@@ -13,6 +13,7 @@ In-memory LRU cache (bounded) keyed by URL.
 from __future__ import annotations
 
 import re
+import sys as _sys
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +22,10 @@ from urllib.parse import urlparse
 
 import requests
 import trafilatura
+
+_PACKAGES = str(__import__('pathlib').Path(__file__).resolve().parents[3] / "packages")
+if _PACKAGES not in _sys.path:
+    _sys.path.insert(0, _PACKAGES)
 
 
 CACHE_MAX = 256
@@ -139,6 +144,65 @@ def _extract_title(html: str) -> str | None:
     return None
 
 
+def _ai_extract(html: str, url: str) -> tuple[str, str, str | None]:
+    """Use DeepSeek-V4-Pro to extract article content when trafilatura fails.
+
+    Returns (content_html, text, title). Returns ('', '', None) if AI unavailable.
+    """
+    try:
+        from ingest._ai import available, chat  # noqa: PLC0415
+        if not available():
+            return "", "", None
+
+        # Strip scripts/styles/nav to reduce tokens, keep body text
+        import re as _re  # noqa: PLC0415
+        clean = _re.sub(r"<(script|style|noscript|nav|footer|header)[^>]*>.*?</\1>", "", html,
+                        flags=_re.DOTALL | _re.IGNORECASE)
+        # Strip all tags leaving text only, cap at 8000 chars to stay within context
+        text_only = _re.sub(r"<[^>]+>", " ", clean)
+        text_only = _re.sub(r"\s+", " ", text_only).strip()[:8000]
+
+        if len(text_only) < 100:
+            return "", "", None
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an article extractor. Given page text, return a JSON object with: "
+                    "title (string), content (the main article body as plain paragraphs, no HTML tags), "
+                    "published (date string or null). "
+                    "Focus on the article content only. Ignore navigation, ads, footers. "
+                    "Return ONLY the JSON object."
+                )
+            },
+            {"role": "user", "content": f"Extract article from this page text:\n\n{text_only}"}
+        ]
+        raw = chat(messages, temperature=0)
+        if not raw:
+            return "", "", None
+
+        import json as _json  # noqa: PLC0415
+        import re as _re2  # noqa: PLC0415
+        match = _re2.search(r"\{.*\}", raw, _re2.DOTALL)
+        if not match:
+            return "", "", None
+        data = _json.loads(match.group())
+        content = data.get("content", "").strip()
+        title = data.get("title", "").strip() or None
+        if not content or len(content) < 50:
+            return "", "", None
+
+        # Convert plain paragraphs to HTML
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+        if len(paragraphs) == 1:
+            paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
+        content_html = "".join(f"<p>{p}</p>" for p in paragraphs if len(p) > 20)
+        return content_html, content, title
+    except Exception:
+        return "", "", None
+
+
 def fetch_article(url: str, force: bool = False) -> Article:
     if not url.startswith(("http://", "https://")):
         raise ValueError("URL must be http(s)")
@@ -174,13 +238,20 @@ def fetch_article(url: str, force: bool = False) -> Article:
     title = (getattr(metadata, "title", None) if metadata else None) or _extract_title(html)
 
     if not extracted_html:
-        # Page fetched OK but extraction yielded nothing (landing page, JS-heavy,
-        # or auth-wall). Return a minimal "view original" card instead of 502-ing.
-        extracted_html = (
-            f'<p>This page could not be extracted automatically — it may require JavaScript or login.</p>'
-            f'<p><a href="{url}" target="_blank" rel="noopener">View original on {_hostname(url)}</a></p>'
-        )
-        text = f"View original: {url}"
+        # Stage 4: AI extraction fallback via DeepSeek-V4-Pro
+        ai_html, ai_text, ai_title = _ai_extract(html, url)
+        if ai_html:
+            extracted_html = ai_html
+            text = ai_text
+            if ai_title and not title:
+                title = ai_title
+        else:
+            # Final fallback: view-original card
+            extracted_html = (
+                f'<p>This page could not be extracted automatically.</p>'
+                f'<p><a href="{url}" target="_blank" rel="noopener">View original on {_hostname(url)}</a></p>'
+            )
+            text = f"View original: {url}"
 
     article = Article(
         url=url,

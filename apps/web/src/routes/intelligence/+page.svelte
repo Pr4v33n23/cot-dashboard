@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { api } from '$api/client';
 	import type {
-		DigestResponse, SynthesisResponse, MarketDetail, NewsItem, ZoneKey
+		DigestResponse, SynthesisResponse, MarketDetail, NewsItem, ZoneKey, TodayRow
 	} from '$api/types';
 	import { ZONE_NAMES } from '$api/types';
 	import ZoneBadge from '$components/zone/ZoneBadge.svelte';
@@ -20,6 +20,18 @@
 	let symNews = $state<NewsItem[]>([]);
 	let symLoading = $state(false);
 	let symError = $state<string | null>(null);
+
+	let todayRows = $state<TodayRow[]>([]);
+	const aiWatchSyms = $derived(new Set(digest?.watch_markets?.map(w => w.symbol) ?? []));
+	const allMarkets = $derived.by(() => {
+		if (!todayRows.length) return [] as TodayRow[];
+		return [...todayRows].sort((a, b) => {
+			const aAI = aiWatchSyms.has(a.symbol) ? 1 : 0;
+			const bAI = aiWatchSyms.has(b.symbol) ? 1 : 0;
+			if (aAI !== bAI) return bAI - aAI;
+			return b.n_zones - a.n_zones || b.total_mag - a.total_mag;
+		});
+	});
 
 	async function loadDigest() {
 		digestLoading = true;
@@ -57,6 +69,8 @@
 	}
 
 	onMount(async () => {
+		// Load all markets immediately — list always populated even if digest is empty
+		api.today().then(rows => { todayRows = rows; }).catch(() => {});
 		await loadDigest();
 		const sym = page.url.searchParams.get('sym');
 		if (sym) selectMarket(sym);
@@ -161,21 +175,40 @@
 				{/each}
 			</section>
 
-			<section class="digest-card">
-				<div class="card-label">Top markets · click to analyse</div>
-				{#each digest.watch_markets as wm, i}
-					<button
-						class="watch-row"
-						class:active={selectedSym === wm.symbol}
-						onclick={() => selectMarket(wm.symbol)}
-					>
-						<span class="wm-rank num">{String(i + 1).padStart(2,'0')}</span>
-						<span class="wm-sym num">{wm.symbol}</span>
-						<span class="wm-reason">{wm.reason}</span>
-						<span class="wm-score num">{wm.confluence_score.toFixed(2)}</span>
-						<span class="wm-arrow">›</span>
-					</button>
-				{/each}
+			<section class="digest-card markets-list">
+				<div class="card-label">
+					All markets · click to analyse
+					{#if todayRows.length}
+						<span class="market-count num">{todayRows.length}</span>
+					{/if}
+				</div>
+				{#if !todayRows.length}
+					<div class="empty-text">Loading markets…</div>
+				{:else}
+					{#each allMarkets as row}
+						<button
+							class="watch-row"
+							class:active={selectedSym === row.symbol}
+							onclick={() => selectMarket(row.symbol)}
+						>
+							{#if aiWatchSyms.has(row.symbol)}
+								<span class="ai-flag">⚡</span>
+							{:else}
+								<span class="wm-rank num">{row.n_zones > 0 ? row.n_zones : '·'}</span>
+							{/if}
+							<span class="wm-sym num">{row.symbol}</span>
+							<span class="wm-reason">{row.sector}</span>
+							{#if row.zones_on.length > 0}
+								<span class="zone-pills">
+									{#each row.zones_on.slice(0,3) as z}
+										<span class="zone-pill zone-{z.toLowerCase()}">{z}</span>
+									{/each}
+								</span>
+							{/if}
+							<span class="wm-arrow">›</span>
+						</button>
+					{/each}
+				{/if}
 			</section>
 
 			<section class="digest-card">
@@ -396,6 +429,17 @@
 	.wm-reason { flex: 1; font-size: 10px; color: var(--ink-muted); }
 	.wm-score { font-size: 11px; color: var(--zone-a2); flex-shrink: 0; }
 	.wm-arrow { color: var(--ink-faint); font-size: 12px; }
+
+	.markets-list { max-height: 340px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+	.market-count { background: var(--border); border-radius: 99px; padding: 1px 6px; font-size: 9px; margin-left: 6px; }
+	.ai-flag { font-size: 11px; width: 18px; flex-shrink: 0; color: var(--zone-a2); }
+	.zone-pills { display: flex; gap: 2px; flex-shrink: 0; }
+	.zone-pill { font-size: 8px; font-family: var(--font-mono); padding: 1px 4px; border-radius: 3px; }
+	.zone-a1 { background: rgba(245,166,35,.15); color: var(--zone-a1); }
+	.zone-a2 { background: rgba(183,148,246,.15); color: var(--zone-a2); }
+	.zone-a3 { background: rgba(79,209,197,.12); color: var(--zone-a3); }
+	.zone-a4 { background: rgba(245,101,101,.12); color: var(--zone-a4); }
+	.zone-a5 { background: rgba(24,224,143,.10); color: var(--zone-a5); }
 
 	.nm-row { display: flex; align-items: flex-start; gap: 6px; padding: 5px 12px; border-bottom: 1px solid var(--border-soft); }
 	.nm-row:last-child { border-bottom: none; }
