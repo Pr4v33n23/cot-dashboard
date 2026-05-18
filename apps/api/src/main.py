@@ -49,6 +49,7 @@ from .schemas import (
     ExtremesRow,
     AnalogueEntry, AnaloguesResponse,
     AlertRule, AlertTrigger,
+    SeasonalWeek, SeasonalityResponse,
 )
 
 
@@ -666,6 +667,50 @@ def check_alerts_endpoint():
     from ingest.alerts import check_alerts  # noqa: PLC0415
     b = _bundle()
     return check_alerts(b.annotated, b.synthesis)
+
+
+@app.get("/seasonality/{symbol}", response_model=SeasonalityResponse)
+def seasonality_endpoint(symbol: str) -> SeasonalityResponse:
+    """Seasonal COT index norms by calendar week (3-year lookback)."""
+    import numpy as np  # noqa: PLC0415
+    b = _bundle()
+    df = b.annotated.get(symbol)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for {symbol}")
+
+    df_copy = df.copy()
+    df_copy["iso_week"] = df_copy["date"].dt.isocalendar().week.astype(int)
+    df_copy["year"] = df_copy["date"].dt.year
+
+    max_year = int(df_copy["year"].max())
+    df3 = df_copy[df_copy["year"] >= max_year - 2].dropna(subset=["cot_index_comm"])
+
+    weeks_out: list[SeasonalWeek] = []
+    for wk, grp in df3.groupby("iso_week"):
+        vals = grp["cot_index_comm"].values
+        weeks_out.append(SeasonalWeek(
+            week=int(wk),
+            avg_cot=round(float(np.mean(vals)), 1),
+            p25_cot=round(float(np.percentile(vals, 25)), 1),
+            p75_cot=round(float(np.percentile(vals, 75)), 1),
+            sample_years=len(grp["year"].unique()),
+        ))
+    weeks_out.sort(key=lambda x: x.week)
+
+    current_row = df.iloc[-1]
+    current_wk = int(current_row["date"].isocalendar()[1]) if hasattr(current_row["date"], "isocalendar") else 1
+    current_cot = float(current_row.get("cot_index_comm") or 50) if "cot_index_comm" in current_row.index else None
+    seasonal_avg = next((w.avg_cot for w in weeks_out if w.week == current_wk), None)
+    deviation = round(current_cot - seasonal_avg, 1) if current_cot and seasonal_avg else None
+
+    return SeasonalityResponse(
+        symbol=symbol,
+        current_week=current_wk,
+        current_cot=round(current_cot, 1) if current_cot else None,
+        seasonal_avg=seasonal_avg,
+        deviation=deviation,
+        weeks=weeks_out,
+    )
 
 
 @app.post("/intelligence/refresh")

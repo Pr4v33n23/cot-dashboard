@@ -276,3 +276,20 @@ export interface AlertTrigger {
 	condition: string;
 	last_triggered: string;
 }
+
+export interface SeasonalWeek {
+	week: number;
+	avg_cot: number;
+	p25_cot: number;
+	p75_cot: number;
+	sample_years: number;
+}
+
+export interface SeasonalityResponse {
+	symbol: string;
+	current_week: number;
+	current_cot: number | null;
+	seasonal_avg: number | null;
+	deviation: number | null;
+	weeks: SeasonalWeek[];
+}

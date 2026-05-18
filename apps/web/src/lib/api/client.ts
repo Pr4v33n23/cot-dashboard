@@ -18,6 +18,7 @@ import type {
 	HeatmapResponse,
 	MarketDetail,
 	NewsResponse,
+	SeasonalityResponse,
 	StatusResponse,
 	TodayRow,
 	RetailSentimentResponse, RegimeResponse, SynthesisResponse, DigestResponse,
@@ -103,6 +104,7 @@ export const api = {
 		delete: (id: string) => fetch(`${BASE}/alerts/${id}`, { method: 'DELETE' }),
 		check: () => post<AlertTrigger[]>('/alerts/check', {}),
 	},
+	seasonality: (symbol: string) => get<SeasonalityResponse>(`/seasonality/${symbol}`),
 };
 
 export { ApiError };

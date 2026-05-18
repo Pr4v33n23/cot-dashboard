@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api } from '$api/client';
-	import type { AnaloguesResponse, MarketDetail, NewsItem, ZoneKey } from '$api/types';
+	import type { AnaloguesResponse, MarketDetail, NewsItem, SeasonalityResponse, ZoneKey } from '$api/types';
 	import { ZONE_NAMES } from '$api/types';
 	import Chart from '$components/chart/Chart.svelte';
 	import NewsRail from '$components/news/NewsRail.svelte';
@@ -15,6 +15,7 @@
 	let detail = $state<MarketDetail | null>(null);
 	let news = $state<NewsItem[]>([]);
 	let analogues = $state<AnaloguesResponse | null>(null);
+	let seasonal = $state<SeasonalityResponse | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let range = $state<'1y' | '3y' | '5y' | 'max'>('3y');
@@ -39,6 +40,7 @@
 			detail = m;
 			news = n.items;
 			api.analogues(symbol).then((a) => { analogues = a; }).catch(() => {});
+			api.seasonality(symbol).then((s) => { seasonal = s; }).catch(() => {});
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
@@ -134,6 +136,24 @@
 					<span class="zb-text">{ZONE_NAMES[z]}</span>
 				{/each}
 				<a href={`/intelligence?sym=${symbol}`} class="ai-link num">✦ AI Analysis</a>
+				{#if seasonal?.deviation != null}
+					<div
+						class="seasonal-badge"
+						title="Current COT vs seasonal average for week {seasonal.current_week}"
+					>
+						<span class="sb-label">vs seasonal</span>
+						<span
+							class="sb-val num"
+							style:color={Math.abs(seasonal.deviation) > 10
+								? seasonal.deviation > 0
+									? 'var(--long)'
+									: 'var(--short)'
+								: 'var(--ink-muted)'}
+						>
+							{seasonal.deviation > 0 ? '+' : ''}{seasonal.deviation.toFixed(1)}
+						</span>
+					</div>
+				{/if}
 			</section>
 		{/if}
 
@@ -280,6 +300,23 @@
 	}
 	.ai-link:hover {
 		background: rgba(183,148,246,.16);
+	}
+	.seasonal-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 3px 9px;
+		border-radius: var(--r-sm);
+		background: var(--bg-panel);
+		border: 1px solid var(--border);
+		font-size: 11px;
+	}
+	.sb-label {
+		color: var(--ink-faint);
+		font-size: 10px;
+	}
+	.sb-val {
+		font-weight: 700;
 	}
 	.zb-label {
 		font-size: var(--fs-11);

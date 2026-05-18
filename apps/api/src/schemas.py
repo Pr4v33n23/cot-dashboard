@@ -283,3 +283,20 @@ class AlertTrigger(BaseModel):
     threshold: float
     condition: str
     last_triggered: str
+
+
+class SeasonalWeek(BaseModel):
+    week: int
+    avg_cot: float
+    p25_cot: float
+    p75_cot: float
+    sample_years: int
+
+
+class SeasonalityResponse(BaseModel):
+    symbol: str
+    current_week: int
+    current_cot: float | None
+    seasonal_avg: float | None
+    deviation: float | None
+    weeks: list[SeasonalWeek]
