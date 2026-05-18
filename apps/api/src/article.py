@@ -171,13 +171,16 @@ def fetch_article(url: str, force: bool = False) -> Article:
             extracted_html = fb_html
             text = fb_text
 
-    if not extracted_html:
-        raise ValueError(
-            f"no extractable content from {_hostname(url)} "
-            "(page likely requires JavaScript or auth)"
-        )
-
     title = (getattr(metadata, "title", None) if metadata else None) or _extract_title(html)
+
+    if not extracted_html:
+        # Page fetched OK but extraction yielded nothing (landing page, JS-heavy,
+        # or auth-wall). Return a minimal "view original" card instead of 502-ing.
+        extracted_html = (
+            f'<p>This page could not be extracted automatically — it may require JavaScript or login.</p>'
+            f'<p><a href="{url}" target="_blank" rel="noopener">View original on {_hostname(url)}</a></p>'
+        )
+        text = f"View original: {url}"
 
     article = Article(
         url=url,
