@@ -68,6 +68,33 @@ TAXONOMY: dict[str, list[str]] = {
     "HE": ["lean hogs", "pork", "swine fever", "african swine fever",
            "china pork", "packer hogs", "usda hogs"],
     "GF": ["feeder cattle", "feedlot", "calf prices", "cow herd"],
+    # ── Equity Indices ────────────────────────────────────────────────────
+    "ES":     ["s&p", "spx", "s&p 500", "sp500", "equity", "stock market", "wall street", "s&p500"],
+    "NQ":     ["nasdaq", "tech stocks", "faang", "mega cap", "qqq"],
+    "YM":     ["dow", "djia", "blue chip", "dow jones"],
+    "RTY":    ["russell", "small cap", "iwm", "russell 2000"],
+    "MES":    ["s&p", "spx", "micro s&p"],
+    "MNQ":    ["nasdaq", "micro nasdaq"],
+    "NIY":    ["nikkei", "japan stocks", "boj", "topix"],
+    # ── Interest Rates ────────────────────────────────────────────────────
+    "ZB":     ["treasury", "t-bond", "30 year", "long bond", "30yr", "yield curve"],
+    "ZN":     ["10-year", "10yr", "treasury note", "10y yield", "10 year yield"],
+    "ZF":     ["5-year", "5yr", "5y yield"],
+    "ZT":     ["2-year", "2yr", "short end", "2y yield"],
+    "FF":     ["fed funds", "federal reserve", "fomc", "rate hike", "rate cut", "fed rate"],
+    "SR3":    ["sofr", "secured overnight", "libor replacement"],
+    # ── FX ────────────────────────────────────────────────────────────────
+    "EURUSD": ["euro", "eur", "ecb", "eurozone", "lagarde", "eu inflation"],
+    "GBPUSD": ["sterling", "pound", "gbp", "boe", "bank of england", "uk inflation"],
+    "JPYUSD": ["yen", "jpy", "boj", "bank of japan", "japan inflation"],
+    "AUDUSD": ["aussie", "aud", "rba", "reserve bank of australia"],
+    "CADUSD": ["loonie", "cad", "bank of canada", "boc", "canada gdp"],
+    "CHFUSD": ["swiss franc", "chf", "snb", "swiss national bank"],
+    "NZDUSD": ["kiwi", "nzd", "rbnz", "reserve bank of new zealand"],
+    "MXNUSD": ["peso", "mxn", "banxico", "mexico inflation"],
+    "BRLUSD": ["real", "brl", "bcb", "brazil", "banco central"],
+    "NOKUSD": ["krone", "nok", "norges bank", "norway oil"],
+    "SEKUSD": ["krona", "sek", "riksbank", "sweden inflation"],
 }
 
 # Source category tags — used by the UI's NewsRail filter chip row.
