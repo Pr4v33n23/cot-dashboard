@@ -64,6 +64,21 @@ class BarRow(BaseModel):
     A4: bool = False
     A5: bool = False
     n_zones: int = 0
+    open_interest: float | None = None
+    nr_long: float | None = None
+    nr_short: float | None = None
+    dealer_long: float | None = None
+    dealer_short: float | None = None
+    am_long: float | None = None
+    am_short: float | None = None
+    lf_long: float | None = None
+    lf_short: float | None = None
+    comm_spec_divergence: int = 0
+    am_lf_divergence: int = 0
+    regime_label: str | None = None
+    regime_proba: list[float] | None = None
+    regime_weeks: int = 0
+    confluence_score: float | None = None
 
 
 class MarketDetail(BaseModel):
@@ -106,6 +121,9 @@ class NewsItem(BaseModel):
     url: str | None = None
     publisher: str | None = None
     markets: list[str] = Field(default_factory=list)
+    sentiment_score: float | None = None
+    sentiment_label: str | None = None
+    sentiment_reason: str | None = None
 
 
 class NewsResponse(BaseModel):
@@ -137,3 +155,38 @@ class ArticleResponse(BaseModel):
     content_html: str
     word_count: int
     fetched_at: str
+
+
+class RetailSentimentItem(BaseModel):
+    symbol: str
+    long_pct: float
+    short_pct: float
+    source: str
+    timestamp: datetime
+
+
+class RetailSentimentResponse(BaseModel):
+    symbol: str
+    items: list[RetailSentimentItem]
+    avg_long_pct: float
+    avg_short_pct: float
+
+
+class RegimeResponse(BaseModel):
+    symbol: str
+    market_type: str
+    current_regime: str
+    regime_weeks: int
+    proba: list[float]
+    next_bar_proba: list[float]
+    transition_matrix: list[list[float]]
+    state_names: list[str]
+
+
+class SynthesisResponse(BaseModel):
+    symbol: str
+    summary: str
+    confluence_score: float
+    key_factors: list[str]
+    watch: str
+    generated_at: datetime | None = None

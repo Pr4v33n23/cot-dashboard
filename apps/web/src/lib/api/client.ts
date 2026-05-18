@@ -13,7 +13,8 @@ import type {
 	MarketDetail,
 	NewsResponse,
 	StatusResponse,
-	TodayRow
+	TodayRow,
+	RetailSentimentResponse, RegimeResponse, SynthesisResponse,
 } from './types';
 
 const BASE = '/api';
@@ -61,7 +62,13 @@ export const api = {
 		return get<NewsResponse>(`/news${suffix}`);
 	},
 	article: (url: string) =>
-		get<ArticleResponse>(`/article?url=${encodeURIComponent(url)}`)
+		get<ArticleResponse>(`/article?url=${encodeURIComponent(url)}`),
+	retailSentiment: (symbol: string) =>
+		get<RetailSentimentResponse>(`/retail-sentiment/${symbol}`),
+	regime: (symbol: string) =>
+		get<RegimeResponse>(`/regime/${symbol}`),
+	synthesis: (symbol: string) =>
+		get<SynthesisResponse>(`/synthesis/${symbol}`),
 };
 
 export { ApiError };

@@ -26,7 +26,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .article import fetch_article
-from .data import Bundle, build_bundle, sector_of
+from .data import Bundle, build_bundle, sector_of, CACHE_DIR
 from .schemas import (
     ArticleResponse,
     BarRow,
@@ -41,6 +41,8 @@ from .schemas import (
     TodayRow,
     ZONE_NAMES,
     ZoneCatalogEntry,
+    RetailSentimentItem, RetailSentimentResponse,
+    RegimeResponse, SynthesisResponse,
 )
 
 
@@ -383,3 +385,65 @@ def news_all(
         for _, row in sub.iterrows()
     ]
     return NewsResponse(from_date=from_date, to_date=to_date, items=items)
+
+
+@app.get("/retail-sentiment/{symbol}", response_model=RetailSentimentResponse)
+def retail_sentiment_endpoint(symbol: str) -> RetailSentimentResponse:
+    b = _bundle()
+    if b.retail_df.empty:
+        return RetailSentimentResponse(symbol=symbol, items=[], avg_long_pct=50.0, avg_short_pct=50.0)
+    sym_df = b.retail_df[b.retail_df["symbol"] == symbol]
+    if sym_df.empty:
+        return RetailSentimentResponse(symbol=symbol, items=[], avg_long_pct=50.0, avg_short_pct=50.0)
+    items = [RetailSentimentItem(**row) for row in sym_df.to_dict("records")]
+    avg_long = float(sym_df["long_pct"].mean())
+    avg_short = float(sym_df["short_pct"].mean())
+    return RetailSentimentResponse(symbol=symbol, items=items, avg_long_pct=avg_long, avg_short_pct=avg_short)
+
+
+@app.get("/regime/{symbol}", response_model=RegimeResponse)
+def regime_endpoint(symbol: str) -> RegimeResponse:
+    import pickle  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+    b = _bundle()
+    if symbol not in b.annotated:
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
+    df = b.annotated[symbol]
+    last = df.iloc[-1]
+    from ingest.universe import UNIVERSE as _UNI  # noqa: PLC0415
+    contract = next((c for c in _UNI if c.symbol == symbol), None)
+    market_type = getattr(contract, "market_type", "physical") if contract else "physical"
+    proba = last.get("regime_proba") or [0.25, 0.25, 0.25, 0.25]
+    if not isinstance(proba, list):
+        proba = [0.25, 0.25, 0.25, 0.25]
+    state_names = ["trending", "accumulation", "distribution", "ranging"]
+    tm: list[list[float]] = [[0.25] * 4 for _ in range(4)]
+    cache_path = CACHE_DIR / f"regime_{symbol}.pkl"
+    if cache_path.exists():
+        try:
+            with open(cache_path, "rb") as f:
+                obj = pickle.load(f)
+            tm = obj["model"].transmat_.tolist()
+        except Exception:
+            pass
+    next_proba = list(np.array(proba) @ np.array(tm))
+    return RegimeResponse(
+        symbol=symbol, market_type=market_type,
+        current_regime=str(last.get("regime_label") or "unknown"),
+        regime_weeks=int(last.get("regime_weeks") or 0),
+        proba=proba, next_bar_proba=next_proba,
+        transition_matrix=tm, state_names=state_names,
+    )
+
+
+@app.get("/synthesis/{symbol}", response_model=SynthesisResponse)
+def synthesis_endpoint(symbol: str) -> SynthesisResponse:
+    b = _bundle()
+    data = b.synthesis.get(symbol, {})
+    return SynthesisResponse(
+        symbol=symbol,
+        summary=data.get("summary", ""),
+        confluence_score=float(data.get("confluence_score", 0.0)),
+        key_factors=data.get("key_factors", []),
+        watch=data.get("watch", ""),
+    )

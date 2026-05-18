@@ -66,6 +66,21 @@ export interface BarRow {
 	A4: boolean;
 	A5: boolean;
 	n_zones: number;
+	open_interest?: number | null;
+	nr_long?: number | null;
+	nr_short?: number | null;
+	dealer_long?: number | null;
+	dealer_short?: number | null;
+	am_long?: number | null;
+	am_short?: number | null;
+	lf_long?: number | null;
+	lf_short?: number | null;
+	comm_spec_divergence: number;
+	am_lf_divergence: number;
+	regime_label?: string | null;
+	regime_proba?: number[] | null;
+	regime_weeks: number;
+	confluence_score?: number | null;
 }
 
 export interface MarketDetail {
@@ -108,6 +123,9 @@ export interface NewsItem {
 	url: string | null;
 	publisher: string | null;
 	markets: string[];
+	sentiment_score?: number | null;
+	sentiment_label?: string | null;
+	sentiment_reason?: string | null;
 }
 
 export interface NewsResponse {
@@ -134,4 +152,39 @@ export interface ArticleResponse {
 	content_html: string;
 	word_count: number;
 	fetched_at: string;
+}
+
+export interface RetailSentimentItem {
+  symbol: string;
+  long_pct: number;
+  short_pct: number;
+  source: string;
+  timestamp: string;
+}
+
+export interface RetailSentimentResponse {
+  symbol: string;
+  items: RetailSentimentItem[];
+  avg_long_pct: number;
+  avg_short_pct: number;
+}
+
+export interface RegimeResponse {
+  symbol: string;
+  market_type: string;
+  current_regime: string;
+  regime_weeks: number;
+  proba: number[];
+  next_bar_proba: number[];
+  transition_matrix: number[][];
+  state_names: string[];
+}
+
+export interface SynthesisResponse {
+  symbol: string;
+  summary: string;
+  confluence_score: number;
+  key_factors: string[];
+  watch: string;
+  generated_at?: string | null;
 }
