@@ -46,6 +46,7 @@ from .schemas import (
     RegimeResponse, SynthesisResponse,
     SectorSignal, WatchMarket, DigestResponse,
     ChatMessage, ChatRequest, ChatResponse,
+    ExtremesRow,
 )
 
 
@@ -534,6 +535,48 @@ def intelligence_digest_endpoint() -> DigestResponse:
         ],
         watch_markets=watch,
     )
+
+
+@app.get("/extremes", response_model=list[ExtremesRow])
+def extremes_endpoint() -> list[ExtremesRow]:
+    """All markets ranked by proximity to a 3-year COT positioning extreme."""
+    from ingest.universe import UNIVERSE as _UNI  # noqa: PLC0415
+    b = _bundle()
+    name_map = {c.symbol: c.name for c in _UNI}
+    mtype_map = {c.symbol: getattr(c, "market_type", "physical") for c in _UNI}
+    rows: list[ExtremesRow] = []
+    for sym, df in b.annotated.items():
+        if df.empty or "cot_index_comm" not in df.columns:
+            continue
+        series = df["cot_index_comm"].dropna()
+        if len(series) < 52:
+            continue
+        current = float(series.iloc[-1])
+        lookback = series.iloc[-156:] if len(series) >= 156 else series
+        p90 = float(lookback.quantile(0.90))
+        p10 = float(lookback.quantile(0.10))
+        dist_high = max(0.0, current - p90) / max(1.0, 100 - p90)
+        dist_low  = max(0.0, p10 - current) / max(1.0, p10)
+        extremeness = round(min(1.0, max(dist_high, dist_low)), 3)
+        direction = "long" if current > p90 else ("short" if current < p10 else "neutral")
+        last = df.iloc[-1]
+        synth = (b.synthesis or {}).get(sym, {})
+        rows.append(ExtremesRow(
+            symbol=sym,
+            name=name_map.get(sym, sym),
+            sector=sector_of(sym) or "",
+            market_type=mtype_map.get(sym, "physical"),
+            cot_index=round(current, 1),
+            extremeness=extremeness,
+            direction=direction,
+            pct_90=round(p90, 1),
+            pct_10=round(p10, 1),
+            n_zones=int(last.get("n_zones", 0) or 0),
+            regime_label=str(last.get("regime_label") or "") or None,
+            confluence_score=float(synth.get("confluence_score", 0) or 0),
+        ))
+    rows.sort(key=lambda r: r.extremeness, reverse=True)
+    return rows
 
 
 @app.post("/intelligence/refresh")

@@ -222,3 +222,18 @@ export interface ChatResponse {
 	cited_markets: string[];
 	context_date: string | null;
 }
+
+export interface ExtremesRow {
+	symbol: string;
+	name: string;
+	sector: string;
+	market_type: string;
+	cot_index: number | null;
+	extremeness: number;
+	direction: 'long' | 'short' | 'neutral';
+	pct_90: number | null;
+	pct_10: number | null;
+	n_zones: number;
+	regime_label: string | null;
+	confluence_score: number;
+}

@@ -15,6 +15,7 @@
 		{ href: '/', label: 'Today', short: 'TD' },
 		{ href: '/heatmap', label: 'Heatmap', short: 'HM' },
 		{ href: '/divergence', label: 'Divergence', short: 'DV' },
+		{ href: '/extremes', label: 'Extremes', short: 'EX' },
 		{ href: '/chat', label: 'Chat', short: '💬' },
 		{ href: '/intelligence', label: 'Intelligence', short: 'AI' }
 	];

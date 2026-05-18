@@ -229,3 +229,18 @@ class ChatResponse(BaseModel):
     reply: str
     cited_markets: list[str] = Field(default_factory=list)
     context_date: str | None = None
+
+
+class ExtremesRow(BaseModel):
+    symbol: str
+    name: str
+    sector: str
+    market_type: str
+    cot_index: float | None
+    extremeness: float
+    direction: Literal["long", "short", "neutral"]
+    pct_90: float | None
+    pct_10: float | None
+    n_zones: int
+    regime_label: str | None
+    confluence_score: float

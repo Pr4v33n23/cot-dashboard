@@ -11,6 +11,7 @@ import type {
 	ChatResponse,
 	ContractMeta,
 	DivergenceRow,
+	ExtremesRow,
 	HeatmapResponse,
 	MarketDetail,
 	NewsResponse,
@@ -91,6 +92,7 @@ export const api = {
 	},
 	chat: (messages: ChatMessage[]) =>
 		post<ChatResponse>('/chat', { messages }),
+	extremes: () => get<ExtremesRow[]>('/extremes'),
 };
 
 export { ApiError };
