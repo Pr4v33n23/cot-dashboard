@@ -44,6 +44,17 @@ def annotate_zones(df: pd.DataFrame) -> pd.DataFrame:
     Expects: the output of `indicators.add_all_indicators(...)`.
     Adds:    A1..A5 boolean + magnitude columns + `n_zones` count.
     """
+    # Gate: A1-A5 only applies to physical contracts (Williams/Briese commercial-hedger thesis).
+    # Financial contracts (market_type="financial") get zero-filled zone columns.
+    market_type = str(df["market_type"].iloc[0]) if "market_type" in df.columns else "physical"
+    if market_type == "financial":
+        out = df.copy()
+        for z in ("A1", "A2", "A3", "A4", "A5"):
+            out[z] = False
+            out[f"{z}_mag"] = 0.0
+        out["n_zones"] = 0
+        return out
+
     out = df.copy()
 
     # ── A1 Extreme positioning ───────────────────────────────────────────
@@ -149,6 +160,47 @@ def add_sector_zone(annotated: dict[str, pd.DataFrame], universe) -> dict[str, p
         merged["A3_mag"] = merged["A3_mag"].fillna(0.0)
         merged["n_zones"] = merged[["A1", "A2", "A3", "A4", "A5"]].sum(axis=1)
         out[sym] = merged
+    return out
+
+
+def annotate_divergence(df: pd.DataFrame) -> pd.DataFrame:
+    """Add comm_spec_divergence (physical) or am_lf_divergence (financial).
+
+    Value = consecutive weeks both sides have moved in opposite directions.
+    0 = not currently diverging.
+    Both columns always present on output (the inactive one is zero).
+    """
+    out = df.copy()
+    market_type = str(df["market_type"].iloc[0]) if "market_type" in df.columns else "physical"
+
+    if market_type == "physical":
+        side_a = out["net_commercials"].fillna(0)
+        mm_net = out["mm_long"].fillna(0) - out["mm_short"].fillna(0)
+        side_b = mm_net
+        active_col = "comm_spec_divergence"
+        zero_col = "am_lf_divergence"
+    else:
+        side_a = out["am_long"].fillna(0) - out["am_short"].fillna(0)
+        side_b = out["lf_long"].fillna(0) - out["lf_short"].fillna(0)
+        active_col = "am_lf_divergence"
+        zero_col = "comm_spec_divergence"
+
+    delta_a = side_a.diff()
+    delta_b = side_b.diff()
+    # Diverging when one side moves up while the other moves down
+    diverging = (delta_a * delta_b) < 0
+
+    streak = 0
+    weeks = []
+    for div in diverging:
+        if div:
+            streak += 1
+        else:
+            streak = 0
+        weeks.append(streak)
+
+    out[active_col] = weeks
+    out[zero_col] = 0
     return out
 
 
